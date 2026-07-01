@@ -1,0 +1,85 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===== 虚拟环境 =====
+venv/
+env/
+ENV/
+.venv/
+.env/
+env.bak/
+venv.bak/
+
+# ===== 配置与密钥（敏感！绝对不能入 Git）=====
+.env
+.env.local
+.env.*.local
+keys/
+*.pem
+*.key
+secrets.yaml
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+.cursor-server/
+
+# ===== 测试与覆盖率 =====
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 日志与临时文件 =====
+*.log
+logs/
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+
+# ===== 数据库 =====
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# ===== 文档构建 =====
+docs/_build/
+site/
+
+# ===== FastAPI 缓存 =====
+.fastapi/
+
+# ===== 个人笔记与本地资料（敏感，默认不入 Git）=====
+# 云服务器相关笔记（可能含 IP/密码/运维命令）
+*.docx
+云服务器相关知识与注意事项.docx

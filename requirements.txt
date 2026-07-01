@@ -1,0 +1,18 @@
+# FitForge 依赖清单
+# 每引入新包都会同步追加，并简述其作用
+
+# ===== Web 框架 =====
+# FastAPI：高性能异步 Web 框架，自带 OpenAPI 文档生成
+fastapi==0.115.*
+# uvicorn[standard]：ASGI 服务器，[standard] 包含 httptools/uvloop/watchgod 等性能增强
+uvicorn[standard]==0.32.*
+
+# ===== 数据校验 =====
+# pydantic v2：FastAPI 强依赖，用于请求体/响应体校验
+pydantic==2.*
+# pydantic-settings：从 .env 加载配置的 BaseSettings
+pydantic-settings==2.*
+# email-validator：Pydantic EmailStr 类型校验依赖
+email-validator==2.*
+# python-multipart：FastAPI 表单/OAuth2PasswordRequestForm 依赖
+python-multipart==0.0.*
