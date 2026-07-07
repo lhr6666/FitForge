@@ -1,18 +1,44 @@
 # FitForge 依赖清单
 # 每引入新包都会同步追加，并简述其作用
+# 锁版本号（==X.Y.Z）保证可重现部署；版本升级需走单独 PR 验证
 
 # ===== Web 框架 =====
-# FastAPI：高性能异步 Web 框架，自带 OpenAPI 文档生成
-fastapi==0.115.*
+# FastAPI：高性能异步 Web 框架，自带 OpenAPI 文档生成 + Depends 依赖注入
+fastapi==0.115.6
 # uvicorn[standard]：ASGI 服务器，[standard] 包含 httptools/uvloop/watchgod 等性能增强
-uvicorn[standard]==0.32.*
+uvicorn[standard]==0.32.1
 
-# ===== 数据校验 =====
-# pydantic v2：FastAPI 强依赖，用于请求体/响应体校验
-pydantic==2.*
-# pydantic-settings：从 .env 加载配置的 BaseSettings
-pydantic-settings==2.*
+# ===== 数据校验 + 配置 =====
+# pydantic v2：FastAPI 强依赖，用于请求体/响应体校验（性能比 v1 提升 5-50 倍）
+pydantic==2.10.4
+# pydantic-settings：从 .env 加载配置的 BaseSettings（D11 决策）
+pydantic-settings==2.7.0
 # email-validator：Pydantic EmailStr 类型校验依赖
 email-validator==2.*
 # python-multipart：FastAPI 表单/OAuth2PasswordRequestForm 依赖
-python-multipart==0.0.*
+python-multipart==0.0.20
+
+# ===== ORM + 数据库 =====
+# SQLAlchemy 2.0 异步：与 FastAPI async 生态契合（D4 决策）
+# [asyncio] extras 显式启用异步扩展
+sqlalchemy[asyncio]==2.0.36
+# asyncmy：MySQL 异步驱动（SQLAlchemy async 后端，D4 决策）
+asyncmy==0.2.10
+# pymysql：MySQL 同步驱动（Alembic autogenerate 需要 — alembic 用同步 URL 连 DB）
+pymysql==1.1.1
+# alembic：数据库 schema 版本管理工具（D9 决策）
+alembic==1.14.0
+
+# ===== 安全 =====
+# passlib[argon2]：密码哈希库（OWASP 推荐 Argon2id，D6 决策）
+passlib[argon2]==1.7.4
+# argon2-cffi：Argon2 的 C 语言实现（passlib 的依赖）
+argon2-cffi==23.1.0
+
+# ===== 测试 =====
+# pytest：Python 测试事实标准
+pytest==9.1.1
+# pytest-asyncio：异步测试支持（FastAPI async endpoint 测试必需）
+pytest-asyncio==1.4.0
+# httpx：异步 HTTP 客户端（FastAPI 端到端集成测试用）
+httpx==0.28.1
