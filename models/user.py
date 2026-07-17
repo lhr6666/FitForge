@@ -1,3 +1,67 @@
-"""User ORM 模型 - 用户表。
-周三填充：id / email / hashed_password / is_active / created_at。
+"""User ORM 模型 - users 表。
+
+D17 决策：3 张表 schema
+D17-a：CASCADE（删 user 自动删 goals/measurements）
+D17-g：created_at/updated_at 全表统一
+
+字段：
+- id：主键，自增
+- username：登录标识，UNIQUE 索引
+- email：邮箱，UNIQUE 索引（Q6 决策：注册时强制必填）
+- password_hash：Argon2id 哈希（D6 决策）
+- nickname：显示名（可空）
+- created_at / updated_at：UTC 时间戳
+
+关系：
+- goals → UserGoal（一对多，CASCADE）
+- measurements → BodyMeasurement（一对多，CASCADE）
 """
+
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
+
+from models import Base
+
+
+class User(Base):
+    """User 模型。
+
+    业务意义：FitForge 的核心实体，关联所有用户级数据（goals、measurements）。
+    """
+
+    __tablename__ = "users"
+
+    # ===== 主键 =====
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # ===== 业务字段 =====
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    nickname = Column(String(50), nullable=True)
+
+    # ===== 时间戳（D17-g：全表统一）=====
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    # ===== 关系（D17-a + D17-e：ORM 层 cascade + DB 层 CASCADE 双保险）=====
+    goals = relationship(
+        "UserGoal",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    measurements = relationship(
+        "BodyMeasurement",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<User {self.username}>"
