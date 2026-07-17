@@ -21,3 +21,10 @@ class Base(DeclarativeBase):
     Alembic env.py 通过 `Base.metadata` 读取所有 model 的 schema，生成 migration。
     """
     pass
+
+
+# Alembic 需要从 models 导入所有 model 才能检测到 schema
+# noqa: E402,F401 是因为 import 必须在 Base 定义之后
+from models.user import User  # noqa: E402,F401
+from models.user_goal import UserGoal  # noqa: E402,F401
+from models.body_measurement import BodyMeasurement  # noqa: E402,F401
