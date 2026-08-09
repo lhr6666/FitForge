@@ -1,13 +1,26 @@
 """FitForge 主入口 - FastAPI 应用实例。
-周二目标：本地能跑通 `uvicorn main:app --reload`，访问 /docs 看到 Swagger UI。
+
+挂载路由 + 注册异常处理（spec §4.2）：
+- POST /auth/register（api/auth.py）
+- 业务异常 → HTTP 状态码（api/exception_handlers.py）
 """
 from fastapi import FastAPI
+
+from api.auth import router as auth_router
+from api.exception_handlers import register_exception_handlers
 
 app = FastAPI(
     title="FitForge",
     description="一个给健身爱好者用的训练管理工具",
     version="0.1.0",
 )
+
+
+# 注册业务异常 → HTTP 状态码映射（Q2 决策）
+register_exception_handlers(app)
+
+# 挂载路由
+app.include_router(auth_router)
 
 
 @app.get("/")
@@ -22,6 +35,6 @@ async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-# 周三开始陆续挂载：
-# app.include_router(auth.router, prefix="/auth", tags=["auth"])
-# app.include_router(body.router, prefix="/body", tags=["body"])
+# 后续会陆续挂载：
+# app.include_router(body_measurement.router, prefix="/body", tags=["body"])
+# app.include_router(goal.router, prefix="/goal", tags=["goal"])
