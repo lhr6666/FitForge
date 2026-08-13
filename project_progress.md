@@ -172,7 +172,31 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
 - [x] 撰写并 review 设计文档
 - [x] git commit spec 文档
 - [x] 调 writing-plans skill 创建实施计划（22 tasks）
-- [ ] 实施 6 大块（按 plan T1-T22）
+- [x] 实施 plan T1-T13（大块 1+2+3：环境/DB/3 model/Alembic）— 14 commit
+- [x] Docker 容器化本地 MySQL + Volume 持久化（D26 决策）
+- [x] 实施 plan T14-T20（大块 4+5：Pydantic/service/路由/测试/smoke）— 7 commit
+- [x] 实施 plan T21：服务器端到端（4 个 curl 测试全过：201/409/422/422）
+- [x] 实施 plan T22：知识沉淀 + 收尾
+
+**周二 2026-08-13 增量（Task 21/22 完成）**：
+
+- **Task 21 服务器端到端**：
+  - 上传代码（scp 失败 → tar 替代，详见 D 决策日志）
+  - 服务器 venv + 13 个依赖
+  - 修改 fitforge 用户 plugin（caching_sha2 → mysql_native_password，避开 cryptography 依赖）
+  - **修改密码为 lhr076200**（D27 决策）
+  - alembic upgrade head 建 3 张表
+  - uvicorn 启动 + /health 200
+  - 4 个端到端 curl 测试全过：201/409/422/422
+- **Task 22 知识沉淀**：
+  - `error_logs/2026-08-13-cryptography-caching-sha2-fix.md`（D27 关联）
+  - `tech_notes/2026-08-13-server-deploy-record.md`（5 步部署 + 5 个真实踩坑 + 面试话术）
+
+**完整产出统计（周三 + 周二增量）**：
+- 21 个 commit（commit 链：f658413 → 2188dd4 → ... → 0460a14）
+- 7 篇 tech_notes + 1 篇 error_log + 1 篇 deploy doc
+- 19 项重大决策落盘（D1-D19）+ 2 项增量（D26-D27）
+- 完整 /auth/register 端到端：本地 + 服务器**两边都跑通**
 
 **产出**：
 
@@ -349,6 +373,20 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
 - **持久化验证**：stop + rm + 重跑容器 → alembic upgrade head 重建 schema 成功 → 3 张业务表 + 11 索引完整
 - **下次开机流程**：Docker Desktop 自动启动容器（`--restart unless-stopped`）；schema 不丢；如需重建空库再跑 alembic upgrade head
 - **文档**：`tech_notes/2026-07-06-docker-mysql-volume.md`
+
+### D27. 服务器 MySQL fitforge 用户密码改为 lhr076200（2026/08/13）
+
+- **决策**：将 fitforge 用户密码从开发默认值 `fitforge_dev_password_2026` 改为用户自定义的 `lhr076200`
+- **理由**：用户明确指定自定义密码，需要全链路同步
+- **修改 3 处**：
+  1. 本地 `.env`：`DATABASE_URL` + `SYNC_DATABASE_URL` 已改
+  2. 服务器 fitforge 用户：`sudo mysql -e "ALTER USER 'fitforge'@'localhost' IDENTIFIED WITH mysql_native_password BY 'lhr076200'; FLUSH PRIVILEGES;"`
+  3. 服务器 `.env`：重新写，新密码 lhr076200 + 端口 3306
+- **同步机制**：`pydantic-settings` 从 .env 读 → 业务代码无感知（Q1 重型 service 模式）
+- **教训**：
+  - 改密码必须 3 处同步（本地 .env、服务器 fitforge 用户、服务器 .env）
+  - 用 `sudo mysql` 绕过 auth_socket 验证 OS 用户
+  - 改 plugin 避免 cryptography 依赖（详见 `error_logs/2026-08-13-cryptography-caching-sha2-fix.md`）
 
 ### D17. MVP 数据库 Schema 设计（2026/07/02）
 
