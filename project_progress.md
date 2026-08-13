@@ -231,6 +231,21 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
 
 ---
 
+## 第 2 周后 技术债务（code review findings，2026-08-13）
+
+- [ ] 1️⃣ 加 rate limiting（slowapi 库）— 安全风险
+- [ ] 2️⃣ 加 logging（service + handler 层）— 运维友好
+- [ ] 3️⃣ 合并 username/email 查重为单次 SQL — 性能优化（不是瓶颈）
+
+## 周三 + 周二 增量 完整产出统计
+
+- 22 个 commit（commit 链：f658413 → ... → 0460a14 → a2021e1 → code review）
+- 8 篇 tech_notes + 1 篇 error_log + 1 篇 deploy doc + 1 篇 server deploy record
+- 19 项重大决策落盘（D1-D19）+ 2 项增量（D26 Docker Volume + D27 密码 lhr076200）
+- 完整 /auth/register 端到端：本地 + 服务器**两边都跑通**
+- 7 个文件 code review 评分：9/10
+- 4 个端到端测试全过：201/409/422/422
+
 ## 重大决策记录（头脑风暴输出）
 
 > 决策一旦做出，全周不再回头讨论。所有决策必须能在面试中讲清楚"为什么"。
