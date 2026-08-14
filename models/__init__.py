@@ -25,6 +25,6 @@ class Base(DeclarativeBase):
 
 # Alembic 需要从 models 导入所有 model 才能检测到 schema
 # noqa: E402,F401 是因为 import 必须在 Base 定义之后
-from models.user import User  # noqa: E402,F401
+from models.user import User, RefreshToken  # noqa: E402,F401
 from models.user_goal import UserGoal  # noqa: E402,F401
 from models.body_measurement import BodyMeasurement  # noqa: E402,F401
