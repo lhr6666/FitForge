@@ -15,6 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from core.exceptions import (
     EmailExistsError,
     FitForgeException,
+    InvalidCredentialsError,
+    InvalidTokenError,
     UsernameExistsError,
 )
 
@@ -34,7 +36,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     - FitForgeException   → 400 Bad Request（其他业务异常兜底）
     - Exception           → 500 Internal Server Error（FastAPI 默认）
     """
-
+# 告诉 FastAPI：如果你抓住了 UsernameExistsError这种类型的错误，
+# 就请用这个 username_exists_handler 函数来处理它。
     @app.exception_handler(UsernameExistsError)
     async def username_exists_handler(
         request: Request,  # noqa: ARG001（FastAPI 必须的参数）
@@ -53,6 +56,30 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidCredentialsError)
+    async def invalid_credentials_handler(
+        request: Request,  # noqa: ARG001
+        exc: InvalidCredentialsError,
+    ) -> JSONResponse:
+        # 401 Unauthorized（登录凭证错误）
+        # WWW-Authenticate: Bearer 头是 OAuth 2.0 标准
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": str(exc)},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(InvalidTokenError)
+    async def invalid_token_handler(
+        request: Request,  # noqa: ARG001
+        exc: InvalidTokenError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": str(exc)},
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     @app.exception_handler(IntegrityError)
