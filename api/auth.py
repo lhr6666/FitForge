@@ -10,16 +10,26 @@ Q4 决策：ORM → DTO 转换（路由层做，不污染 service 层）
 """
 
 from fastapi import APIRouter, Depends, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
-from schemas.user import UserCreate, UserRead
+from core.exceptions import InvalidTokenError
+from core.security import decode_access_token
+from models.user import User
+from schemas.user import (
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserCreate,
+    UserRead,
+)
 from services import auth_service
 
 
 router = APIRouter(
-    prefix="/auth",
-    tags=["auth"],  # OpenAPI 文档分组
+    prefix="/auth",#在该模块下面的全部路由前端都自带这个前缀防止重复手写
+    tags=["auth"],  # OpenAPI 自动分组（Swagger UI 显示 "auth" 标签页）也就是把该模块归类到“auth”的标签内便于查找
 )
 
 
@@ -52,3 +62,83 @@ async def register(
     """
     user = await auth_service.register(db, user_create)
     return UserRead.model_validate(user)
+
+
+# ============ /auth/login + refresh + logout + me 新增路由 ============
+
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    login_data: LoginRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """登录（email + password → access + refresh）。"""
+    access_token, refresh_token, expires_in = await auth_service.login(
+        db, login_data.email, login_data.password
+    )
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=expires_in,
+    )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(
+    refresh_data: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """用 refresh token 换新 access + 新 refresh（rotate）。"""
+    access_token, new_refresh_token, expires_in = await auth_service.refresh_token(
+        db, refresh_data.refresh_token
+    )
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer",
+        expires_in=expires_in,
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    refresh_data: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """登出（撤销 refresh token，幂等）。"""
+    await auth_service.logout(db, refresh_data.refresh_token)
+    return None
+
+
+# ============ get_current_user 中间件 ============
+
+# HTTPBearer 提取 Authorization: Bearer xxx 中的 token
+_bearer_scheme = HTTPBearer(auto_error=False)  # auto_error=False 自己处理 401
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """FastAPI Depends 中间件：验证 Bearer token，返回 User 对象。
+
+    使用：任何需要鉴权的端点加 Depends(get_current_user)
+    异常：InvalidTokenError -> handler 映射 401
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise InvalidTokenError("缺少 Bearer token")
+
+    token = credentials.credentials
+    payload = decode_access_token(token)  # 失败抛 InvalidTokenError
+    user = await db.get(User, int(payload["sub"]))
+    if not user:
+        raise InvalidTokenError("user not found")
+    return user
+
+
+@router.get("/me", response_model=UserRead)
+async def me(
+    current_user: User = Depends(get_current_user),
+) -> UserRead:
+    """演示 get_current_user 中间件：返回当前登录用户。"""
+    return UserRead.model_validate(current_user)
