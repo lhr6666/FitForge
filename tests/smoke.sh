@@ -53,5 +53,62 @@ curl -s -X POST "$BASE_URL/auth/register" \
   -d '{"username":"smoke_charlie","password":"Password123"}' \
   -w "\n  HTTP %{http_code}\n"
 
+# ============================================================
+# /auth/login + refresh + logout + me 新增测试
+# ============================================================
+
+echo ""
+echo "Test 8: POST /auth/login (success -> 200)"
+# 先注册测试用户
+curl -s -X POST "$BASE_URL/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"smoke_loginuser","email":"smoke_login@example.com","password":"Password123"}' > /dev/null
+LOGIN_RESP=$(curl -s -X POST "$BASE_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"smoke_login@example.com","password":"Password123"}')
+ACCESS_TOKEN=$(echo "$LOGIN_RESP" | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+REFRESH_TOKEN=$(echo "$LOGIN_RESP" | python -c "import sys,json; print(json.load(sys.stdin)['refresh_token'])")
+echo "  access_token:  ${ACCESS_TOKEN:0:30}..."
+echo "  refresh_token: ${REFRESH_TOKEN:0:30}..."
+
+echo ""
+echo "Test 9: POST /auth/login (wrong password -> 401)"
+curl -s -X POST "$BASE_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"smoke_login@example.com","password":"WrongPass1"}' \
+  -w "\n  HTTP %{http_code}\n"
+
+echo ""
+echo "Test 10: GET /auth/me (with Bearer -> 200)"
+curl -s "$BASE_URL/auth/me" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -w "\n  HTTP %{http_code}\n"
+
+echo ""
+echo "Test 11: GET /auth/me (without Bearer -> 401)"
+curl -s "$BASE_URL/auth/me" -w "\n  HTTP %{http_code}\n"
+
+echo ""
+echo "Test 12: POST /auth/refresh (rotate -> 200)"
+NEW_REFRESH_RESP=$(curl -s -X POST "$BASE_URL/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}")
+NEW_REFRESH=$(echo "$NEW_REFRESH_RESP" | python -c "import sys,json; print(json.load(sys.stdin)['refresh_token'])")
+echo "  new_refresh: ${NEW_REFRESH:0:30}..."
+
+echo ""
+echo "Test 13: POST /auth/refresh (old revoked -> 401)"
+curl -s -X POST "$BASE_URL/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}" \
+  -w "\n  HTTP %{http_code}\n"
+
+echo ""
+echo "Test 14: POST /auth/logout (revoke -> 204)"
+curl -s -X POST "$BASE_URL/auth/logout" \
+  -H "Content-Type: application/json" \
+  -d "{\"refresh_token\":\"$NEW_REFRESH\"}" \
+  -w "  HTTP %{http_code}\n"
+
 echo ""
 echo "=== Done ==="
