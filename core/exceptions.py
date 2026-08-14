@@ -62,3 +62,29 @@ class EmailExistsError(FitForgeException):
     """
 
     pass
+
+
+class InvalidCredentialsError(FitForgeException):
+    """登录凭证错误（HTTP 401）。
+
+    触发场景：
+        - email 不存在
+        - password 错误
+
+    注意：两个场景返回**统一消息**（防枚举攻击）
+    """
+
+    pass
+
+
+class InvalidTokenError(FitForgeException):
+    """JWT token 无效（HTTP 401）。
+
+    触发场景：
+        - token 签名错
+        - token 已过期
+        - token 类型错（拿 refresh 当 access 用）
+        - token 被撤销（refresh 表 revoked=true）
+    """
+
+    pass
