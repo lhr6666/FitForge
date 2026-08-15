@@ -214,6 +214,81 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
 - 调 writing-plans skill 创建详细实施计划
 - 按 6 大块逐个落盘代码
 
+### 第 1 周 第 4 天 - 周四（2026/08/14）- /auth/login + refresh + logout
+
+**目标**：
+
+- [x] brainstorming 4 决策（Q1 token 机制 / Q2 logout / Q3 payload / Q4 中间件）
+- [x] 写 spec v1 + 走 review
+- [x] 调 writing-plans skill 创建 10-task plan
+- [x] 实施 plan 10 个 task（11 commit）
+- [x] 写综合 tech_notes 沉淀（461 行）
+- [ ] 服务器端到端验证（下次部署时一起做）
+
+**产出**：
+
+- `docs/superpowers/specs/2026-08-14-auth-login-design.md`（585 行，commit `1d81d0c`）
+- `docs/superpowers/plans/2026-08-14-auth-login-plan.md`（1249 行，commit `9eb5329`）
+- 4 新增决策：D28（双 token + rotate）/ D29（DB 存 jti）/ D30（revoke 字段）/ D31（统一错误消息）
+- 4 新端点 + 1 中间件：POST /auth/login + POST /auth/refresh + POST /auth/logout + GET /auth/me + Depends(get_current_user)
+- 1 新表：refresh_tokens（6 列 + 4 索引）
+- 测试：9/9 pytest + 14/14 smoke 全过
+- 详见 tech_notes/2026-08-14-auth-jwt-rotation.md（commit `e4ba047`）
+
+**完整 commit 链（周四 11 个）**：
+
+```
+da04aec  feat(security): add JWT create/decode (RS256)
+d11fbf4  feat(exceptions): add InvalidCredentials + InvalidToken
+bf57200  feat(models): add RefreshToken ORM
+43515c7  feat(db): refresh_tokens alembic migration
+6e17323  feat(schemas): add LoginRequest + RefreshRequest + TokenResponse
+f97bb9b  feat(service): add login + refresh + logout (rotate)
+46cc077  feat(api): add 401 handlers (WWW-Authenticate: Bearer)
+e23c120  feat(api): add 4 routes + get_current_user
+79bccc2  test(auth): add 5 e2e tests
+1aa7c11  test(smoke): add 7 curl tests
+e4ba047  docs(notes): add auth login complete tech notes
+```
+
+**遇到的真踩坑**：
+
+- D27 疏漏：本地 Docker MySQL fitforge 密码没改（Access denied 报错过）
+- datetime naive vs aware：MySQL DateTime naive vs datetime.now(UTC) aware
+- access token 断言错误：rotate 后 access 内容相同（jti 才唯一）
+- Edit 找不到字符串：linter 加中文注释改变了文件
+- LoginRequest 弱密码预期错误：登录不校验强度（注册才校验）
+
+**关键设计（D28）**：
+
+> 双 token + refresh rotate —— access 30min + refresh 14day + 每次 refresh 作废旧 refresh 签发新 refresh。
+> 防重放攻击：攻击者拿到旧 refresh 时，DB 已 revoked → 401。
+
+**下一步**：
+
+- 周五：body_measurements + user_goals CRUD
+- 周六：git push + 部署收尾
+- 周日：周报 + 复盘
+
+---
+
+## 第 1 周完整进度（4/7 天）
+
+| Day | 内容 | commit | 状态 |
+|-----|------|--------|------|
+| 周一 | 项目初始化 | 1 | ✅ |
+| 周二 | 环境/服务器 | 2 | ✅ |
+| 周三 | /auth/register | 22 | ✅ |
+| 周四 | /auth/login + refresh + logout | 11 | ✅ |
+| 周五 | body_measurements + goals CRUD | - | ⬜ |
+| 周六 | git push + 部署收尾 | - | ⬜ |
+| 周日 | 周报 + 复盘 | - | ⬜ |
+
+**总 commit 数**：36（21 + 11 + 4 其他）
+**总决策数**：23（D1-D19 + D26 + D27 + D28-D31）
+**总 tech_notes**：9 篇
+**总 error_log**：2 篇
+
 ---
 
 ## 待办 / 技术债务
@@ -388,6 +463,62 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
 - **持久化验证**：stop + rm + 重跑容器 → alembic upgrade head 重建 schema 成功 → 3 张业务表 + 11 索引完整
 - **下次开机流程**：Docker Desktop 自动启动容器（`--restart unless-stopped`）；schema 不丢；如需重建空库再跑 alembic upgrade head
 - **文档**：`tech_notes/2026-07-06-docker-mysql-volume.md`
+
+### D28. JWT 双 token + refresh rotate 机制（2026/08/14）
+
+- **决策**：access 30min + refresh 14day + 每次 refresh 作废旧 refresh + 签发新 refresh
+- **理由**：
+  - access 短寿命 → 泄露风险低（30min 窗口）
+  - refresh 长寿命 → 用户体验好（不用频繁登录）
+  - rotate 防重放 → 攻击者拿到旧 refresh 时已 revoked
+- **配套**：
+  - `core/security.py` 加 4 个 JWT 函数（create_access_token / create_refresh_token / decode_access_token / decode_refresh_token）
+  - `models/user.py` 加 RefreshToken 模型（jti + expires_at + revoked + 复合索引）
+  - `core/exceptions.py` 加 InvalidCredentialsError + InvalidTokenError
+  - `api/exception_handlers.py` 加 401 handler（含 WWW-Authenticate: Bearer）
+  - `api/auth.py` 加 4 路由（login/refresh/logout/me）+ get_current_user 中间件
+- **面试话术**：
+  > "双 token + rotate 是 OAuth 2.0 业界标准——access 短寿命控泄露风险，refresh 长寿命保 UX，rotate 防止重放。我用 DB 存 jti 实现主动撤销 + rotate，避免 Redis 黑名单的单点依赖。"
+- **关联 commit**：`da04aec` → `d11fbf4` → `bf57200` → `43515c7` → `6e17323` → `f97bb9b` → `46cc077` → `e23c120` → `79bccc2` → `1aa7c11`
+
+### D29. refresh token DB 存储 + jti 字段（2026/08/14）
+
+- **决策**：refresh token 写 DB（jti + expires_at + revoked），不存 Redis
+- **理由**：
+  - 可主动撤销（logout）
+  - 可 rotate（防重放）
+  - 可审计（用户登录历史）
+  - MVP 阶段不引入新依赖
+- **配套**：
+  - 新表 `refresh_tokens`：id / user_id (FK CASCADE) / jti (UNIQUE UUID4) / expires_at / revoked / created_at
+  - 复合索引 `(user_id, revoked)`：按 user_id 查 active token
+- **面试话术**：
+  > "我把 refresh token 写 DB 而不存 Redis——MVP 阶段不引入新依赖。每个 refresh 有唯一 jti（UUID4），DB 验证 `WHERE jti=? AND revoked=false AND expires_at > now()`。微服务架构也能共享 DB（不像 session 需要 sticky 或共享缓存）。"
+
+### D30. refresh token 用 revoked 字段（不用 Redis 黑名单）（2026/08/14）
+
+- **决策**：`revoked` boolean 字段 + 复合索引 `(user_id, revoked)`
+- **理由**：
+  - 单字段查询快（`WHERE jti=? AND revoked=false`）
+  - 不引入新依赖
+  - MVP 够用
+  - 撤销延迟：access 30min 内仍可用（业界标准 trade-off）
+- **配套**：
+  - service.refresh_token 作废旧 refresh + 签发新 refresh
+  - service.logout 设 revoked=True
+- **未来**：用户量大时迁移 Redis（毫秒级撤销）
+
+### D31. 登录错误统一消息"邮箱或密码错误"（2026/08/14）
+
+- **决策**：用户不存在 + 密码错返回同一消息
+- **理由**：
+  - 防枚举攻击（攻击者通过响应差异探测哪些 email 已注册）
+  - 业界标准（GitHub / Google / 各大厂）
+- **配套**：
+  - service.login 抛 InvalidCredentialsError
+  - detail 字段固定写"邮箱或密码错误"（**绝对不能**分别说"邮箱不存在"和"密码错误"）
+- **面试话术**：
+  > "我统一返回'邮箱或密码错误'——防枚举攻击。攻击者无法通过响应差异探测哪些 email 已注册。代价是真实用户报错时少一些上下文（但可以靠'忘记密码'功能找回）。这是 OAuth 2.0 / 各大厂的安全最佳实践。"
 
 ### D27. 服务器 MySQL fitforge 用户密码改为 lhr076200（2026/08/13）
 
