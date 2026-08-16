@@ -2,7 +2,7 @@
 
 > **日期**：2026-08-16（周六补周五内容）
 > **作者**：LHR6666（与 Claude Code 配对沉淀）
-> **关联决策**：D40（SQLite in-memory for tests，与本坑关联）+ D41（smoke 脚本固化方案 A）
+> **关联决策**：D40（SQLite in-memory for tests，与本坑同期发现）；本坑独立 tech_notes 沉淀，无对应 D 决策编号
 > **关联 commit**：`9f4f927`（smoke 脚本固化方案 A：body 写到临时文件 + `curl --data-binary @file`）
 > **关联 spec**：`docs/superpowers/specs/2026-08-16-body-crud-design.md` §3.7-§3.10 + §3.11
 > **目的**：面试前复习 + bash ↔ curl ↔ Python 字节流边界 + pytest 为什么测不到真 HTTP 坑 + CI smoke 国际化方案
@@ -472,7 +472,8 @@ rm -f /tmp/smoke_goal_body.json
 
 - **关联决策**：
   - **D40**：SQLite in-memory for tests（让 pytest e2e 跑得快，但仍需真 HTTP smoke 兜底）
-  - **D41**：smoke 脚本固化方案 A（spec §10 Task 15）
+  - **D41（幻觉修订）**：本次 subagent 报告里引用了**不存在的 D41**（D40 才是正式 SQLite in-memory 决策）。本文件之前误写为"+ D41（smoke 脚本固化方案 A）"，main agent 已通过 Edit 修复为"+ 本坑独立沉淀"。决策号必须对齐 spec §11 决策表（D32-D40），不允许 subagent 自创编号。
+  - **本坑**：smoke 脚本固化方案 A 的实际工程陷阱（spec §10 Task 15 输出，无对应 D 决策）
 - **关联 commit**：
   - `9f4f927`：test(smoke) add curl smoke tests for 11 body+goal endpoints（含方案 A 的中文 body 测试）
 - **关联 spec**：`docs/superpowers/specs/2026-08-16-body-crud-design.md` §3.10 user-goals PATCH（含 notes 字段，可能有中文）
