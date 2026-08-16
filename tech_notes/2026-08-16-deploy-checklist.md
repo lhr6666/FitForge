@@ -98,6 +98,19 @@ ssh fitforge
 
 （D14 决策：SSH 别名 `fitforge`，私钥 `~/.ssh/id_ed25519` 在用户本地 D:/ssh/）
 
+### Step 3.5: **从备份复制 .env**（新增，本次踩坑关键）
+
+```bash
+ls ~/fitforge.bak_<date>/.env 2>/dev/null && (
+  echo "从备份复制 .env"
+  cp ~/fitforge.bak_<date>/.env ~/fitforge/.env
+) || echo "备份里没有 .env，需手动 cat > 创建（参考 08-13 部署记录）"
+```
+
+**事故教训**：本地打包时 `--exclude='.env'`（避免本地私密信息上传），但服务器上 .env 跟着旧 `fitforge` mv 走了。新 `fitforge` 没 .env → `core/config.py` 读不到 DATABASE_URL → SQLAlchemy 报 connection 错。**本次部署踩了 4 个坑，这条是第 1 个**。
+
+**为什么不直接 scp .env 上服务器**：本地 .env 含本地数据库密码（fitforge @ localhost:3307），跟服务器 .env（fitforge @ localhost:3306 / 部署时手写）可能不同。**不要混用**。
+
 ### Step 4: 服务器备份旧代码
 
 ```bash
@@ -115,6 +128,25 @@ rm /tmp/fitforge_2026-08-16.tar.gz
 cd ~/fitforge
 ```
 
+### Step 5.5: **生成 RSA 密钥对**（若服务器上没 keys/，**新增**）
+
+```bash
+cd ~/fitforge
+ls keys/private.pem 2>/dev/null || (
+  echo "keys/ 不存在，生成新 RSA 密钥对"
+  mkdir -p keys
+  openssl genrsa -out keys/private.pem 2048 2>&1 | tail -2
+  openssl rsa -in keys/private.pem -pubout -out keys/public.pem 2>&1 | tail -2
+  chmod 600 keys/private.pem
+  chmod 644 keys/public.pem
+)
+ls -la keys/
+```
+
+**事故教训**：本次部署服务器上**根本没有 keys/** —— `core/security.py._load_keys()` 在 import 时找不到 `keys/private.pem` → uvicorn 启动失败。08-13 部署时没建过 keys/（register 端点不需要 JWT），本次 D39 迁移后所有端点都需要 JWT。
+
+**若服务器上已有 keys/**：跳过此 step（说明之前部署过 login 相关功能）。
+
 ### Step 6: venv 重新 install（如有依赖变化先 diff）
 
 ```bash
@@ -130,15 +162,37 @@ pip install -r requirements.txt
 - aiosqlite **仅测试用**，已通过 conftest.py 的 `os.environ.setdefault` 隔离（D40 决策）
 - 服务器**不**装 aiosqlite
 
-### Step 7: alembic check（不应该需要升级）
+### Step 6.5: 验证 requirements.txt 完整（防漏包踩坑，**新增**）
+
+```bash
+cd ~/fitforge
+grep -i 'jwt\|pyjwt\|cryptography' requirements.txt
+# 必须看到 PyJWT[crypto] 一行
+```
+
+**若没有 PyJWT**：本地 requirements.txt 漏了核心依赖（D5 决策）。**手动装上**：
+```bash
+pip install 'PyJWT[crypto]==2.10.1'
+# 之后手动更新本地 requirements.txt 加这行
+```
+
+**事故教训**：本次部署新 venv 缺 PyJWT 导致 uvicorn `ModuleNotFoundError`。08-13 部署时 PyJWT 装在 `~/.local/`（--user 残留），新 venv 是干净的，所以崩。**详细见** `error_logs/2026-08-16-server-deploy-4-issues.md`。
+
+### Step 7: alembic check + upgrade（**必须跑 upgrade，不要假设**）
 
 ```bash
 source venv/bin/activate
-alembic current     # 应该显示当前 HEAD
-alembic history     # 应该没有未应用的迁移
+alembic current    # 看当前 HEAD
+alembic history    # 看历史 migration 列表
+alembic upgrade head   # **必跑**：即便觉得没改也要跑（防 schema 漂移）
 ```
 
-**预期**：`alembic current` 输出与 `2026-07-06 创建 3 张表` 的 revision 一致。**schema 没改**（D17 已落盘），不需要 upgrade。
+**预期**：
+- `alembic current` 显示当前 HEAD revision
+- `alembic upgrade head` 若有 pending migration 会跑（如 `Running upgrade -> <new>, add refresh_tokens table`）
+- 若 `alembic upgrade head` 报 "no new migrations"，说明已对齐，OK
+
+**事故教训**：本次部署时我以为"schema 没改不需要 alembic upgrade"——**错了**。08-14 周三加了 `refresh_tokens` 表（D29 决策），08-13 部署没有这张表。本次部署 `/auth/login` 调用 `INSERT INTO refresh_tokens` 报 `Table doesn't exist` → smoke 全 401 失败。**永远跑 `alembic upgrade head`**——这是数据库 schema 漂移的最大保险。
 
 ### Step 8: restart uvicorn
 
