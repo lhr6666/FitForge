@@ -23,11 +23,13 @@ async with AsyncSessionLocal() as session:
 
 **为什么这种设计？**
 
-| 设计选择 | 优点 |
-|----------|------|
-| **配置集中** | session 的 `expire_on_commit`、`autoflush`、`class_` 在工厂创建时定好 |
-| **调用简洁** | `AsyncSessionLocal()` 一行拿 session，不用每次传 engine 和参数 |
-| **解耦** | 换 engine 不影响调用处代码 |
+
+| 设计选择     | 优点                                                         |
+| -------- | ---------------------------------------------------------- |
+| **配置集中** | session 的 `expire_on_commit`、`autoflush`、`class`_ 在工厂创建时定好 |
+| **调用简洁** | `AsyncSessionLocal()` 一行拿 session，不用每次传 engine 和参数         |
+| **解耦**   | 换 engine 不影响调用处代码                                          |
+
 
 > **面试话术**：「SQLAlchemy 的 sessionmaker 是'工厂的工厂'——这是设计模式里的'抽象工厂'。配置一次、调用多次，避免重复参数。session = async_sessionmaker(...)() 这种写法面试会被追问，可以反过来说'我更喜欢分两步写，可读性更高'。这是 SQLAlchemy 区别于手写 DBUtils 的优雅之处。」
 
@@ -35,28 +37,39 @@ async with AsyncSessionLocal() as session:
 
 ## 2. expire_on_commit=False：异步 ORM 的**强制设置**
 
-| expire_on_commit | 同步 session | 异步 session |
-|------------------|-------------|-------------|
-| **True（默认）** | ✅ OK（lazy load 触发隐式 SQL）| ❌ **报错**：`MissingGreenlet: greenlet_spawn has not been called` |
-| **False** | ✅ OK（commit 后属性保留快照）| ✅ **OK** |
+
+| expire_on_commit | 同步 session               | 异步 session                                                     |
+| ---------------- | ------------------------ | -------------------------------------------------------------- |
+| **True（默认）**     | ✅ OK（lazy load 触发隐式 SQL） | ❌ **报错**：`MissingGreenlet: greenlet_spawn has not been called` |
+| **False**        | ✅ OK（commit 后属性保留快照）     | ✅ **OK**                                                       |
+
 
 **为什么异步不能 lazy load**：
 
 ```python
-# 同步 lazy load（OK）
-class User:
-    orders: list[Order]  # relationship
+# 同步代码：程序停在这里等
+user = db.query(User).first()  # 程序卡在这里，等数据库返回
+print(user.name)               # 数据返回后才执行这行
 
-user.orders  # 触发 SELECT * FROM orders WHERE user_id=?（同步阻塞调用）
+# 异步代码
+user = await db.get(User, 1)  # ✅ 查数据库，用 await 等待
+await db.commit()             # ✅ 提交，用 await 等待
 
-# 异步 lazy load（❌ 报错）
-user.orders  # 想触发 await db.execute(...)，但 Python 属性访问不能 await
+print(user.name)  # ❌ 报错！MissingGreenlet
+
 ```
 
-Python 属性访问 `user.orders` 是**同步**操作，不能 `await`。而 lazy load 本质是隐式数据库 IO（异步 ORM 里就是隐式 await）——这在 Python 属性访问协议里做不到。
+user.name这种属于属性访问，user.get_name()带括号的就是函数调用，**属性访问**：就像"看一眼"，直接拿数据，没有括号 `()`**函数调用**：就像"下命令"，执行一段代码，有括号 `()。`
+
+`await` 的意思是：“暂停当前函数，等这个异步操作完成”。但 `user.name` 根本不是一个异步操作，它只是"看一眼"
+
+你不能说"暂停当前函数，等我看一眼完成"——看一眼是一瞬间的事。
+
+所以只有设false，*commit 不会清空 user 对象的数据，而是保留快照下次查询直接返回快照*
 
 **设 False 的代价**：
-- commit 后如果改了 DB 数据，ORM 对象**不感知**（返回 commit 时的快照）
+
+- commit 后如果改了 DB 数据，ORM 对象**不感知**（返回 commit 时的快照），也就是返回改动之前的旧数据
 - 但在**事务内**不会发生（同一 session 一直生效）
 - 跨 session 操作需要 `db.refresh(obj)`
 
@@ -65,6 +78,8 @@ Python 属性访问 `user.orders` 是**同步**操作，不能 `await`。而 laz
 ---
 
 ## 3. pool_pre_ping=True：生产环境的"连接体检"
+
+**核心概念**：防止拿到一个“断开”的连接。
 
 **问题根源**：MySQL 默认 `wait_timeout = 28800 秒（8 小时）`——空闲连接会被服务端关闭。中间件/防火墙也可能断开空闲连接。
 
@@ -84,20 +99,22 @@ sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (2006, "MySQL server
    ↓
 从连接池拿连接
    ↓
-SELECT 1（pre_ping 检查）  ← 这里花 ~1ms
-   ├ 连接有效 → 用连接
-   └ 连接断开 → 丢弃，重连
+发一个SELECT 1（pre_ping 检查）  ← 这里花 ~1ms
+   ├ 有反应：连接有效 → 用连接
+   └ 没反应：连接断开 → 丢弃，重连
    ↓
 执行业务 SQL
 ```
 
 **代价与收益**：
 
-| 维度 | 数值 |
-|------|------|
-| **代价** | 每次拿连接多 ~1ms（毫秒级开销）|
-| **收益** | 零"连接已断开"错误 |
-| **适用** | 生产必开，开发可关 |
+
+| 维度     | 数值                 |
+| ------ | ------------------ |
+| **代价** | 每次拿连接多 ~1ms（毫秒级开销） |
+| **收益** | 零"连接已断开"错误         |
+| **适用** | 生产必开，开发可关          |
+
 
 > **面试话术**：「pool_pre_ping 是生产必开——MySQL 8 小时断开空闲连接、中间件/防火墙也经常断开。1ms 的 ping 成本换来零'MySQL server has gone away'错误，是典型的'小成本换大可靠性'工程实践。开发环境可以关掉省 1ms，生产环境必开——这是 SQLAlchemy 文档明确推荐的。」
 
@@ -107,15 +124,20 @@ SELECT 1（pre_ping 检查）  ← 这里花 ~1ms
 
 ```python
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session      # ← 路由函数在这里执行
-        except Exception:
-            await session.rollback()  # ← 出错回滚
-            raise                # ← 重新抛出，让 exception_handler 处理
-        finally:
-            pass              # ← async with 自动 close
+    async with AsyncSessionLocal() as session:  # 1. 拿一个盘子
+          try:
+              yield session  # 2. 把盘子递给做奶茶的人（路由函数）
+          except:
+              await session.rollback() # 3. 出错了？把盘子里的东西倒掉（回滚）
+              raise
+          finally:
+              pass  # 4. 无论成功失败，finally 都会执行，async with 会自动把盘子收走
 ```
+
+**关键点：yield 是什么？**
+
+- `yield` 就像**传菜员把盘子递给厨师**。
+- 传菜员停在原地不动，等厨师把菜做好了，盘子回到传菜员手里。
 
 **完整生命周期**：
 
@@ -136,12 +158,14 @@ HTTP 请求结束
 
 **4 个设计要点**：
 
-| 要点 | 作用 |
-|------|------|
-| **async with** | 自动 close session，避免泄漏 |
-| **try/except/rollback** | 事务原子性——部分写入撤销 |
-| **raise** | 把异常重新抛出，让 FastAPI exception_handler 处理 |
-| **finally** | 即使异常也走 close（即使 raise 也会触发）|
+
+| 要点                      | 作用                                     |
+| ----------------------- | -------------------------------------- |
+| **async with**          | 自动 close session，避免泄漏                  |
+| **try/except/rollback** | 事务原子性——部分写入撤销                          |
+| **raise**               | 把异常重新抛出，让 FastAPI exception_handler 处理 |
+| **finally**             | 即使异常也走 close（即使 raise 也会触发）            |
+
 
 **为什么用 async generator 不用普通函数？**
 
@@ -167,9 +191,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 ## 5. 面试 Q&A（4 题预演）
 
-### Q1：为什么 create_async_engine 不需要传 poolclass？
+### Q1：**为什么不用指定连接池类型？**
 
-> "SQLAlchemy 2.0 默认用 `AsyncAdaptedQueuePool`——这是 SQLAlchemy 为异步引擎特殊设计的连接池，跟同步的 `QueuePool` 接口兼容但底层用 asyncio 锁。如果手动指定 poolclass 要小心：传同步 pool 会报 'sync pool in async engine' 错。SQLAlchemy 自动选最合适的 pool，你不用操心。"
+A: SQLAlchemy 会自动选最适合异步的连接池，不用你操心。
 
 ### Q2：expire_on_commit=False 是什么意思？为什么异步必须设？
 
@@ -187,13 +211,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 ## 6. 踩坑清单
 
-| 坑 | 现象 | 解法 |
-|----|------|------|
-| 同步 lazy load 失败 | `MissingGreenlet` 报错 | 异步 ORM 必须 `await db.refresh(obj)` 或用 `selectinload`/`joinedload` 预加载 |
-| `expire_on_commit=True`（默认）| commit 后属性访问报错 | 显式设 `expire_on_commit=False` |
-| 不开 `pool_pre_ping` | "MySQL server has gone away" | 生产环境加 `pool_pre_ping=True` |
-| 连接池耗尽 | `TimeoutError: QueuePool limit reached` | 调大 `pool_size` + `max_overflow` 或优化慢查询 |
-| 异步 session 用同步 driver | `MissingGreenlet` + 阻塞 | 异步 engine 必配 asyncmy/asyncpg |
+
+| 坑                           | 现象                                      | 解法                                                                   |
+| --------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
+| 同步 lazy load 失败             | `MissingGreenlet` 报错                    | 异步 ORM 必须 `await db.refresh(obj)` 或用 `selectinload`/`joinedload` 预加载 |
+| `expire_on_commit=True`（默认） | commit 后属性访问报错                          | 显式设 `expire_on_commit=False`                                         |
+| 不开 `pool_pre_ping`          | "MySQL server has gone away"            | 生产环境加 `pool_pre_ping=True`                                           |
+| 连接池耗尽                       | `TimeoutError: QueuePool limit reached` | 调大 `pool_size` + `max_overflow` 或优化慢查询                               |
+| 异步 session 用同步 driver       | `MissingGreenlet` + 阻塞                  | 异步 engine 必配 asyncmy/asyncpg                                         |
+
 
 ---
 

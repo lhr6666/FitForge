@@ -26,6 +26,7 @@ POST /auth/logout     (新)                   # revoke refresh (幂等)
 ```
 
 **3 张表的改动**：
+
 - `users`：加 `refresh_tokens` relationship
 - `refresh_tokens`（新）：jti + expires_at + revoked + FK CASCADE
 - `alembic_version`：2 个 revision（ec5983897455 → 8d6db464011d）
@@ -39,58 +40,99 @@ POST /auth/logout     (新)                   # revoke refresh (幂等)
 **决策**：access 30 分钟 + refresh 14 天 + 每次 refresh rotate。
 
 **为什么双 token**：
+
 - access 短寿命 → 泄露风险低
 - refresh 长寿命 → 用户体验好（不频繁登录）
 - access 泄露 → 30 分钟窗口
 - refresh 泄露 → 14 天窗口（**但 DB 验证 + rotate 兜底**）
 
+刚开始登录会发送一个生成token有效30分钟和一个刷新token，也就是前端存有两个token，而刷新token是用来刷新掉旧的这两个token生成新的两个
+
 **为什么 rotate**：
+
 ```
-用户用 refresh A → server 验 A → 作废 A + 签发 B
-  ↓
-攻击者拿到 A（之前截获的）→ 拿 A 来 refresh
-  ↓
-server 查 DB：A 已 revoked → 拒绝 401
+[登录成功]
+   ↓
+你手里: [Access A (30分)] + [Refresh R (14天)]
+黑客手里: [Refresh R (14天)]  <-- 偷到了
+
+   ↓ (过了30分钟，A 过期了)
+
+[你发起刷新] -------------------------------------------------> [黑客发起刷新] (稍晚一点)
+   ↓                                                              ↓
+后端: 验证 R 通过 ✓                                          后端: 验证 R ...
+后端: 把 R 标记为【已作废】❌                                 后端: 查数据库...
+后端: 发给你 [Access A2] + [Refresh R2]                       后端: 发现 R 已经【作废】了❌
+   ↓                                                              ↓
+你更新: 扔掉 A,R，存好 A2,R2                                 后端: 报错 401！滚蛋！
+
+若黑客先刷新：
+你会被强制下线，然后重新登录，那会怎么样？
+
+你输入正确的账号密码 → 后端验证通过。
+后端强制撤销该用户的所有 Refresh Token（这是进阶安全策略，或者即使不撤销，也会签发全新的）。
+后端给你发一对全新的票：Access(NEW) + Refresh(NEW)。
 ```
 
 **rotate 防重放**——旧 refresh 立刻失效。
 
 ### D29：refresh token DB 存储 + jti
 
+JWT 本身是“发出去就不管了”的（无状态）。但我们在业务中有个强需求：**我要能主动让 Token 失效**（比如用户点了“退出登录”，或者改了密码）。
+
 **决策**：refresh token 写 DB（jti + expires_at + revoked）。
 
-**为什么 DB**：
-- 可主动撤销（logout）
-- 可 rotate（防重放）
-- 可审计（登录历史）
+**为什么存 DB**：
+
+- 可主动撤销（用户点 Logout，我们就在数据库里把这条记录标为“删除”或“作废”。下次黑客拿来用，一查数据库，发现已经没了，直接拒绝）
+- 可 rotate（每次刷新时，把旧记录标为作废，插入一条新记录。这就实现了“旧 Token 立即失效”）
+- 可审计（你可以查这个表，看到用户“上次登录是什么时候”、“用了几个设备”）
 
 **jti 是什么**：
+
 - JWT ID，UUID4 字符串
 - 每个 refresh token 唯一
-- DB 索引：unique + indexed
+- 验证时，拿着 Token 里的 JTI 去数据库里**精确匹配**，找到唯一的那条记录。
 
 **为什么不存 access token**：
+
 - access 短寿命（30 分钟），过期自动失效
-- DB 查 access 反而拖慢请求
+- 如果每次请求 API 都要查数据库验证 Access Token，那数据库压力太大了，速度也会变慢。
 
 ### D30：refresh token revoke 字段（不用 Redis 黑名单）
 
-**决策**：`revoked` boolean 字段 + 复合索引 `(user_id, revoked)`。
+**决策**：在数据库表里加一个布尔类型字段 `revoked`（ true / false ） + 复合索引 `(user_id, revoked)`。
 
 **vs Redis 黑名单**：
+
 - ✅ 单字段查询快（`WHERE jti=? AND revoked=false`）
 - ✅ 不引入新依赖
 - ✅ MVP 够用
-- ❌ 撤销延迟（access 30min 仍可用）—— 业界标准 trade-off
+- ❌ 撤销延迟（access 30min 仍可用）—— 这是指 Access Token。因为 Access Token 不存库，所以即便你撤销了 Refresh Token，那个已经发出去的 Access Token 在 30 分钟内依然是有效的。这是 JWT 机制的通病，业界都接受这个 trade-off（折衷）。
 
-**复合索引**：
+**复合索引**（用于**查询某用户所有有效的 Token”**）：
+
 - `idx_refresh_tokens_user_active (user_id, revoked)`：按 user_id 查 active token
+
+eg：
+
+你想实现一个功能：“**强制踢掉某用户的所有设备**”（也就是让他在所有手机上都下线）。  
+你需要执行的 SQL 逻辑是：
+
+SELECT * FROM refresh_tokens 
+
+WHERE user_id = 1   -- 找这个用户
+
+AND revoked = false; -- 找还没作废的
+
+然后把这些记录的 `revoked` 都改成 `true`。
 
 ### D31：统一错误消息 "邮箱或密码错误"
 
 **决策**：用户不存在 + 密码错 返回同一消息。
 
 **为什么**：
+
 - 防止枚举攻击（攻击者通过响应区分"用户不存在"和"密码错"）
 - 业界标准（GitHub / Google 都是这样）
 - `detail` 字段写"邮箱或密码错误"——**绝对不能**分别说"邮箱不存在"和"密码错误"
@@ -108,6 +150,7 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9  .  eyJzdWIiOiIxIiwiaWF0IjoxNzE0MDk5MDAwLCJ
 ```
 
 **Payload 包含 4 个 claims**：
+
 - `sub`：subject（用户 ID，str 类型）
 - `iat`：issued at（签发时间）
 - `exp`：expiration（过期时间）
@@ -115,52 +158,23 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9  .  eyJzdWIiOiIxIiwiaWF0IjoxNzE0MDk5MDAwLCJ
 
 ### 3.2 RS256 vs HS256
 
-| 维度 | HS256（对称）| **RS256（非对称）** |
-|------|------------|------------------|
-| 算法 | HMAC + 共享密钥 | RSA + 公私钥 |
-| 签发 | 用 secret | 用**私钥** |
-| 验证 | 用**同一个** secret | 用**公钥** |
-| 性能 | 快 | 慢（非对称）|
-| 用途 | 单服务 | **微服务**（公钥可公开）|
-| 我们的选择 | ❌ | ✅ D7 决策（第一周直接上）|
+
+| 维度    | HS256（对称）       | **RS256（非对称）**  |
+| ----- | --------------- | --------------- |
+| 算法    | HMAC + 共享密钥     | RSA + 公私钥       |
+| 签发    | 用 secret        | 用**私钥**         |
+| 验证    | 用**同一个** secret | 用**公钥**         |
+| 性能    | 快               | 慢（非对称）          |
+| 用途    | 单服务             | **微服务**（公钥可公开）  |
+| 我们的选择 | ❌               | ✅ D7 决策（第一周直接上） |
+
 
 **为什么用 RS256**：
+
 - 第一周就建立"私钥签发 + 公钥验证"工程心智
 - 未来拆 auth-service 微服务时，**公钥发给其他服务**（私钥只留 auth-service）
 
-### 3.3 双 token 机制
-
-| Token | 寿命 | 用途 | 存储 |
-|-------|------|------|------|
-| **access_token** | 30 分钟 | 业务请求 `Authorization: Bearer xxx` | 客户端（内存） |
-| **refresh_token** | 14 天 | access 过期后**换新** | 客户端 + DB（jti） |
-
-**为什么双 token**：
-- access 短 → 泄露风险低
-- refresh 长 → 用户体验好
-- access 泄露 → 30 分钟窗口
-- refresh 泄露 → 14 天窗口（DB + rotate 兜底）
-
-### 3.4 refresh token rotate（防重放）
-
-```
-正常 flow：
-  login → 签发 A
-  refresh(A) → 作废 A + 签发 B
-
-重放攻击：
-  攻击者截获 A → 用 A 调 refresh
-  server 查 DB：A 已 revoked → 拒绝 401
-```
-
-**关键**：每次 refresh **rotate**——旧 refresh 立刻失效。
-
-### 3.5 DB 双层兜底
-
-- **应用层**（service.refresh_token）：查 jti + revoked=false + expires_at > now
-- **DB 层**：revoked 字段（即使应用层被绕过，DB 还能查）
-
-### 3.6 get_current_user 中间件
+### 3.3 get_current_user 中间件
 
 ```python
 async def get_current_user(
@@ -178,20 +192,23 @@ async def get_current_user(
 ```
 
 **4 步**：
+
 1. HTTPBearer 提取 `Authorization: Bearer xxx`
 2. decode_access_token 验签 + 验证过期 + 验证 type
 3. DB 查 user（拿最新数据）
 4. 返回 user 对象（**不是** user_id——业务层拿完整 user）
 
-### 3.7 401 vs 422 vs 409 状态码
+### 3.4 401 vs 422 vs 409 状态码
 
-| 状态码 | 含义 | 触发 |
-|--------|------|------|
-| 200 | 成功 | login/refresh 业务成功 |
-| 204 | 成功无 body | logout（无返回内容）|
-| **401** | **未授权** | **InvalidCredentials（密码错）/ InvalidToken（token 错）** |
-| **409** | **数据冲突** | register 时 username/email 重复 |
-| **422** | **请求格式错** | Pydantic 校验失败（缺 email / 弱密码）|
+
+| 状态码     | 含义        | 触发                                                 |
+| ------- | --------- | -------------------------------------------------- |
+| 200     | 成功        | login/refresh 业务成功                                 |
+| 204     | 成功无 body  | logout（无返回内容）                                      |
+| **401** | **未授权**   | **InvalidCredentials（密码错）/ InvalidToken（token 错）** |
+| **409** | **数据冲突**  | register 时 username/email 重复                       |
+| **422** | **请求格式错** | Pydantic 校验失败（缺 email / 弱密码）                       |
+
 
 **关键**：401 必须带 `WWW-Authenticate: Bearer` 头（OAuth 2.0 标准）。
 
@@ -247,6 +264,7 @@ service.refresh_token:
 ```
 
 **4 步关键**：
+
 - 验签 ✓
 - 查 DB 验证 ✓
 - **作废旧 refresh**（防重放）✓
@@ -329,6 +347,7 @@ FastAPI:
 **现象**：`TypeError: can't compare offset-naive and offset-aware datetimes`。
 
 **根因**：
+
 - `db_token.expires_at` 来自 MySQL `DateTime` → Python 读出来是 **naive**（无 tzinfo）
 - `datetime.now(timezone.utc)` 是 **aware**（带 tzinfo）
 - 两者不能直接比较！
@@ -371,17 +390,19 @@ FastAPI:
 
 ## 7. 5 个关键 commit 模式
 
-| Commit | 模式 | 关键 |
-|--------|------|------|
-| `da04aec` | 核心模块加函数 | security.py 加 JWT 函数 + key 启动加载 |
-| `d11fbf4` | 异常体系扩展 | 业务异常继承 FitForgeException 基类 |
-| `bf57200` | ORM 模型加表 | User 加关系 + RefreshToken 新模型 |
-| `43515c7` | alembic autogenerate | 人工 review 生成的 migration |
-| `f97bb9b` | 业务层加流程 | service 3 函数含完整数据流 |
-| `46cc077` | 异常 → HTTP 映射 | 401 + WWW-Authenticate: Bearer |
-| `e23c120` | 路由层 + 中间件 | Depends(get_current_user) 设计 |
-| `79bccc2` | pytest e2e | 9/9 全过（4 旧 + 5 新） |
-| `1aa7c11` | smoke 7 新场景 | 14/14 全过 |
+
+| Commit    | 模式                   | 关键                              |
+| --------- | -------------------- | ------------------------------- |
+| `da04aec` | 核心模块加函数              | security.py 加 JWT 函数 + key 启动加载 |
+| `d11fbf4` | 异常体系扩展               | 业务异常继承 FitForgeException 基类     |
+| `bf57200` | ORM 模型加表             | User 加关系 + RefreshToken 新模型     |
+| `43515c7` | alembic autogenerate | 人工 review 生成的 migration         |
+| `f97bb9b` | 业务层加流程               | service 3 函数含完整数据流              |
+| `46cc077` | 异常 → HTTP 映射         | 401 + WWW-Authenticate: Bearer  |
+| `e23c120` | 路由层 + 中间件            | Depends(get_current_user) 设计    |
+| `79bccc2` | pytest e2e           | 9/9 全过（4 旧 + 5 新）               |
+| `1aa7c11` | smoke 7 新场景          | 14/14 全过                        |
+
 
 ---
 
@@ -436,6 +457,7 @@ curl -X POST http://localhost:8000/auth/login \
 ## 10. 11 个 pytest + 14 个 smoke = 完整测试覆盖
 
 **pytest（tests/test_auth.py）**：
+
 ```
 ✓ test_register_success               ← 旧
 ✓ test_register_duplicate_username    ← 旧
@@ -450,6 +472,7 @@ curl -X POST http://localhost:8000/auth/login \
 ```
 
 **smoke（tests/smoke.sh）**：
+
 ```
 ✓ Test 1-7: register 7 个场景          ← 旧
 ✓ Test 8-14: login/refresh/logout/me    ← 新

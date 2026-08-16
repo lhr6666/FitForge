@@ -16,7 +16,7 @@ FitForge MVP 第一个业务端点：用户注册。支撑后续 `/auth/login`�
 ### 1.2 设计目标
 
 - ✅ 严格分层（路由 / service / model / schema 各司其职）
-- ✅ 业务可复用（service 层不依赖 FastAPI，CLI/脚本/队列可直接调）
+- ✅ 业务可复用（service 层不依赖 FastAPI，CLI/脚本/队列可直接调）**“Service 层不依赖 FastAPI”** = **“厨师不需要服务员也能炒菜”**。**好处**：这套注册逻辑，不仅网页能用，以后写自动脚本、做后台任务、或者换个框架，这套核心代码**一行都不用改**，直接拿来用。
 - ✅ 安全第一（Argon2id 密码哈希、email/username 唯一性双层防御）
 - ✅ 错误清晰（业务异常体系 + 状态码语义化）
 - ✅ 演进友好（保留 5.x 周 DDD 三层升级路径）
@@ -30,14 +30,16 @@ FitForge MVP 第一个业务端点：用户注册。支撑后续 `/auth/login`�
 
 ## 2. 6 决策汇总（来自 brainstorming Q1-Q6）
 
-| # | 决策 | 选项 | 理由 |
-|---|------|------|------|
-| Q1 | service 层职责边界 | **重型 service**（接 Pydantic schema、返回 ORM、抛业务异常）| 业务可复用、面试可讲"分层 + 异常映射" |
-| Q2 | 错误处理 | **业务异常体系**（`UsernameExistsError` 等，路由层注册 `exception_handler` 映射 HTTP 状态码）| service 不知道 HTTP、纯业务可测 |
-| Q3 | session 注入 | **`async generator + Depends`**（`get_db()` yield session，try/finally 关闭）| FastAPI 官方推荐、面试必讲 |
-| Q4 | Pydantic schema | **2 个 schema**（`UserCreate` 请求 + `UserRead` 响应）| YAGNI、避免 password_hash 泄漏 |
-| Q5 | 密码强度 | **中等**（`min_length=8` + 字母数字混合）| 拦典型弱密码、代码适中 |
-| Q6 | email 字段 | **强制必填** | 跟 D17 UNIQUE 约束一致、为未来找回密码铺路 |
+
+| #   | 决策              | 选项                                                                        | 理由                          |
+| --- | --------------- | ------------------------------------------------------------------------- | --------------------------- |
+| Q1  | service 层职责边界   | **重型 service**（接 Pydantic schema、返回 ORM、抛业务异常）                            | 业务可复用、面试可讲"分层 + 异常映射"       |
+| Q2  | 错误处理            | **业务异常体系**（`UsernameExistsError` 等，路由层注册 `exception_handler` 映射 HTTP 状态码） | service 不知道 HTTP、纯业务可测      |
+| Q3  | session 注入      | `**async generator + Depends`**（`get_db()` yield session，try/finally 关闭）  | FastAPI 官方推荐、面试必讲           |
+| Q4  | Pydantic schema | **2 个 schema**（`UserCreate` 请求 + `UserRead` 响应）                           | YAGNI、避免 password_hash 泄漏   |
+| Q5  | 密码强度            | **中等**（`min_length=8` + 字母数字混合）                                           | 拦典型弱密码、代码适中                 |
+| Q6  | email 字段        | **强制必填**                                                                  | 跟 D17 UNIQUE 约束一致、为未来找回密码铺路 |
+
 
 ---
 
@@ -64,6 +66,7 @@ Client ──POST /auth/register──▶ api/auth.py (路由层)
 ```
 
 **核心架构原则**：
+
 - **路由层**：HTTP 适配（解析 body、调 service、ORM → DTO 转换、注册异常映射）
 - **业务层**：纯业务（查重、哈希、写库），不知道 FastAPI 存在
 - **基础设施层**：`core/db.py` / `core/security.py` / `core/exceptions.py`
@@ -74,30 +77,32 @@ Client ──POST /auth/register──▶ api/auth.py (路由层)
 
 ### 4.1 新增/修改文件
 
-| 文件 | 状态 | 职责 |
-|------|------|------|
-| `core/config.py` | 新增 | pydantic-settings 读 .env（DATABASE_URL 等）|
-| `core/db.py` | 新增 | SQLAlchemy 2.0 异步 engine + `get_db()` async generator |
-| `core/security.py` | 新增 | Argon2id `hash_password()` / `verify_password()` |
-| `core/exceptions.py` | 新增 | 业务异常类（`UsernameExistsError` / `EmailExistsError`）|
-| `models/__init__.py` | 新增 | 导出 `Base` + 3 个 model |
-| `models/user.py` | 替换占位 | `User` ORM class |
-| `models/user_goal.py` | 替换占位 | `UserGoal` ORM class |
-| `models/body_measurement.py` | 替换占位 | `BodyMeasurement` ORM class |
-| `schemas/user.py` | 替换占位 | `UserCreate` + `UserRead` |
-| `services/auth_service.py` | 替换占位 | `register(db, user_create) -> User` |
-| `api/auth.py` | 替换占位 | POST `/auth/register` |
-| `api/exception_handlers.py` | 新增 | exception_handler 注册函数 |
-| `main.py` | 修改 | `include_router(auth.router)` + `add_exception_handler(...)` |
-| `.env` | 新增 | `DATABASE_URL` 等配置 |
-| `.env.example` | 修改 | 补 `DATABASE_URL` 示例 |
-| `requirements.txt` | 修改 | + `alembic` `asyncmy` `sqlalchemy[asyncio]` `passlib[argon2]` `argon2-cffi` `pydantic-settings` |
-| `alembic.ini` | 新增 | alembic 配置 |
-| `alembic/env.py` | 新增 | 配 `DATABASE_URL` + 引入 `models` |
-| `alembic/versions/xxx_create_users.py` | autogenerate | 第 1 个 migration |
-| `alembic/versions/xxx_create_user_goals.py` | autogenerate | 第 2 个 migration |
-| `alembic/versions/xxx_create_body_measurements.py` | autogenerate | 第 3 个 migration |
-| `tests/test_auth.py` | 新增 | 端到端测试 |
+
+| 文件                                                 | 状态           | 职责                                                                                              |
+| -------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| `core/config.py`                                   | 新增           | pydantic-settings 读 .env（DATABASE_URL 等）                                                        |
+| `core/db.py`                                       | 新增           | SQLAlchemy 2.0 异步 engine + `get_db()` async generator                                           |
+| `core/security.py`                                 | 新增           | Argon2id `hash_password()` / `verify_password()`                                                |
+| `core/exceptions.py`                               | 新增           | 业务异常类（`UsernameExistsError` / `EmailExistsError`）                                               |
+| `models/__init__.py`                               | 新增           | 导出 `Base` + 3 个 model                                                                           |
+| `models/user.py`                                   | 替换占位         | `User` ORM class                                                                                |
+| `models/user_goal.py`                              | 替换占位         | `UserGoal` ORM class                                                                            |
+| `models/body_measurement.py`                       | 替换占位         | `BodyMeasurement` ORM class                                                                     |
+| `schemas/user.py`                                  | 替换占位         | `UserCreate` + `UserRead`                                                                       |
+| `services/auth_service.py`                         | 替换占位         | `register(db, user_create) -> User`                                                             |
+| `api/auth.py`                                      | 替换占位         | POST `/auth/register`                                                                           |
+| `api/exception_handlers.py`                        | 新增           | exception_handler 注册函数                                                                          |
+| `main.py`                                          | 修改           | `include_router(auth.router)` + `add_exception_handler(...)`                                    |
+| `.env`                                             | 新增           | `DATABASE_URL` 等配置                                                                              |
+| `.env.example`                                     | 修改           | 补 `DATABASE_URL` 示例                                                                             |
+| `requirements.txt`                                 | 修改           | + `alembic` `asyncmy` `sqlalchemy[asyncio]` `passlib[argon2]` `argon2-cffi` `pydantic-settings` |
+| `alembic.ini`                                      | 新增           | alembic 配置                                                                                      |
+| `alembic/env.py`                                   | 新增           | 配 `DATABASE_URL` + 引入 `models`                                                                  |
+| `alembic/versions/xxx_create_users.py`             | autogenerate | 第 1 个 migration                                                                                 |
+| `alembic/versions/xxx_create_user_goals.py`        | autogenerate | 第 2 个 migration                                                                                 |
+| `alembic/versions/xxx_create_body_measurements.py` | autogenerate | 第 3 个 migration                                                                                 |
+| `tests/test_auth.py`                               | 新增           | 端到端测试                                                                                           |
+
 
 ### 4.2 各文件关键代码骨架
 
@@ -371,41 +376,123 @@ async def health():
 
 1. **客户端** `POST /auth/register` + JSON body
 2. **FastAPI 解析 body** → 自动用 `UserCreate` Pydantic 校验
-   - 失败 → 自动返回 **422** + 详细错误
-   - 字段：username 3-50 字符、`^[a-zA-Z0-9_]+$`、email `EmailStr`、password `min_length=8` + 字母数字 validator
+  - 失败 → 自动返回 **422** + 详细错误
+  - 字段：username 3-50 字符、`^[a-zA-Z0-9_]+$`、email `EmailStr`、password `min_length=8` + 字母数字 validator
 3. **路由函数** `register(user_create: UserCreate, db: AsyncSession = Depends(get_db))` 被调用
 4. **路由层** 调 `await auth_service.register(db, user_create)`
 5. **service 层** 业务逻辑：
-   - `SELECT * FROM users WHERE username = ?` → 找到抛 `UsernameExistsError`
-   - `SELECT * FROM users WHERE email = ?` → 找到抛 `EmailExistsError`
-   - `pwd_hash = security.hash_password(password)`（Argon2id cost=12）
-   - `user = User(username=..., email=..., password_hash=pwd_hash, nickname=...)`
-   - `db.add(user)` + `db.flush()`（取 id，不 commit）+ `db.commit()`（持久化）
-   - 返回 `user` (ORM 对象)
+  - `SELECT * FROM users WHERE username = ?` → 找到抛 `UsernameExistsError`
+  - `SELECT * FROM users WHERE email = ?` → 找到抛 `EmailExistsError`
+  - `pwd_hash = security.hash_password(password)`（Argon2id cost=12）
+  - `user = User(username=..., email=..., password_hash=pwd_hash, nickname=...)`
+  - `db.add(user)` + `db.flush()`（取 id，不 commit）+ `db.commit()`（持久化）
+  - 返回 `user` (ORM 对象)
 6. **路由层** 收到 ORM 对象 → `UserRead.model_validate(user)` 转换
 7. **FastAPI 序列化** → JSON `{"id": 1, "username": "alice", "nickname": null}`
 8. **HTTP 响应** **201 Created** + body
 9. **客户端** 拿到响应，记录用户
 
 **session 生命周期**：
+
 - 请求开始：`get_db()` yield 新 session
 - 请求结束（成功/异常）：`finally` 关闭 session
 - 异常时：先 `rollback()` 再关闭
+
+
+
+通俗说法：
+
+### **第一阶段：前台接待（第 1-3 步）**
+
+**角色：客户端 & FastAPI 路由层**
+
+这个阶段的核心是**“验票”**——看用户带来的数据合不合规。
+
+1. **客户端发请求**：用户在 App/网页上点“注册”，浏览器发了一个 `POST` 请求，包里装着 JSON 数据（比如 `{"username": "alice", ...}`）。
+2. **FastAPI 自动校验**：
+  - FastAPI 就像门口的保安。它拿着 `UserCreate` 这个“入场标准”去比对数据。
+  - **如果不合格**（比如密码只有 3 位，或者邮箱格式不对）：保安直接拦下，扔出一张 **422 错误单**（Unprocessable Entity），流程直接结束，根本不进后厨。
+  - **如果合格**：保安把数据打包成一个 Python 对象（`user_create`），放行。
+3. **路由函数接手**：
+  - 这时，代码里的 `register` 函数被唤醒。
+  - 关键动作 `Depends(get_db)`：这就是**依赖注入**。函数大喊一声“我要个数据库连接！”，FastAPI 就像服务员一样，立马递过来一个连接对象 `db`。
+  - 路由层不做业务，它只当**传声筒**：拿着数据和连接，喊一声：“后厨（Service 层），开工了！”
+
+### **第二阶段：后厨加工（第 4-5 步）**
+
+**角色：Service 业务层**
+
+这是整个流程**最核心、最复杂**的部分。Service 层拿到“原材料”后，开始精加工。
+
+1. **Service 层的业务逻辑**（拆解为 5 个小动作）：
+  - **① 查重**：
+    - 先去仓库看一眼：`SELECT * FROM users WHERE username = ?`。
+    - 如果发现有同名用户，直接**抛异常**（`UsernameExistsError`）。这就像大厨发现食材坏了，直接把锅扔了，不干了。这个异常会被最外层的“异常处理器”捕获，变成 409 错误返回给用户。
+  - **② 加密**：
+    - 这是安全的关键。用户的明文密码（如 `123456`）绝不能直接存。
+    - Service 调用 `security.hash_password`，用 Argon2id 算法把密码变成一串乱码（如 `$argon2id$v=19...`）。
+  - **③ 建模**：
+    - 创建一个 `User` 对象（ORM 对象），把用户名、加密后的密码塞进去。这就像把做好的菜装进盘子。
+  - **④ 入库准备**：
+    - `db.add(user)`：把盘子端到仓库门口。
+    - `db.flush()`：**这是个关键动作**。它相当于“预提交”。它让数据库生成了 ID（自增主键），但还没真正写入硬盘。这样做是为了拿到 ID，万一后续还有操作，可以直接用。
+    - `db.commit()`：**正式提交**。这一下，数据才真正写进了硬盘。
+  - **⑤ 返回**：把存好的 `user` 对象（这时候它已经有 ID 了）交还给路由层。
+
+### **第三阶段：安全交付（第 6-9 步）**
+
+**角色：路由层 & Pydantic Schema**
+
+1. **ORM 转 DTO（关键的安全过滤）**：
+  - Service 交还的是 `User` 对象（ORM），里面**包含**密码哈希。
+  - 路由层用 `UserRead.model_validate(user)` 进行转换。
+  - **神奇的一幕发生了**：`UserRead` 这个模子里**根本没有定义** `password` 字段。
+  - 所以，转换出来的结果里，密码字段自动消失了。这就是**“白名单机制”**——我没写的字段，绝对不返回。
+
+7-9. **打包发货**：  
+* FastAPI 把 `UserRead` 对象变成 JSON 字符串。  
+* 包装成 HTTP 响应，状态码设为 **201**（Created）。  
+* 发回给客户端。
+
+### **第四阶段：清洁收尾**
+
+**这不在主流程 10 步里，但在后台默默运行。**
+
+- `get_db()` **的魔法**：
+  - 你在路由函数里用的 `db` 对象，其实是一个“生成器”。
+  - **请求开始时**：`yield session` 给你用。
+  - **请求结束后**：不管你是成功存盘了，还是中间报错了，代码都会进入 `finally` 块。
+  - **异常处理**：如果中间报错了（比如数据库崩了），`finally` 会执行 `session.rollback()`（回滚），就像 Word 文档没保存就撤销一样，保证数据库里不会留下烂尾数据。最后 `session.close()` 关闭连接，释放资源。
+
+### **总结一张图**
+
+你可以把这个流程想象成一条流水线：
+
+1. **进料口**（路由层）：检查原材料格式（Pydantic），不合格直接踢出去（422）。
+2. **加工台**（Service 层）：
+  - 查库存（查重）
+  - 秘制配方（密码加密）
+  - 半成品组装（ORM 对象）
+3. **仓库**（数据库）：入库落锁。
+4. **出料口**（路由层）：贴标签（过滤敏感信息），打包发货（JSON 201）。
 
 ---
 
 ## 6. 错误处理（异常 → 状态码映射）
 
-| 异常 | 状态码 | 响应体 | 触发场景 |
-|------|--------|--------|----------|
-| Pydantic `ValidationError` | 422 | FastAPI 默认 | username/email/password 格式错 |
-| `UsernameExistsError` | 409 | `{"detail": "用户名 'xxx' 已被占用"}` | service 层 username 查重失败 |
-| `EmailExistsError` | 409 | `{"detail": "邮箱 'xxx' 已被注册"}` | service 层 email 查重失败 |
-| `IntegrityError` | 409 | `{"detail": "数据冲突..."}` | DB 层兜底（并发注册同 username/email）|
-| `FitForgeException`（其他）| 400 | `{"detail": str(exc)}` | 其他业务异常 |
-| `Exception`（未捕获）| 500 | FastAPI 默认 | 系统错误 |
+
+| 异常                         | 状态码 | 响应体                            | 触发场景                         |
+| -------------------------- | --- | ------------------------------ | ---------------------------- |
+| Pydantic `ValidationError` | 422 | FastAPI 默认                     | username/email/password 格式错  |
+| `UsernameExistsError`      | 409 | `{"detail": "用户名 'xxx' 已被占用"}` | service 层 username 查重失败      |
+| `EmailExistsError`         | 409 | `{"detail": "邮箱 'xxx' 已被注册"}`  | service 层 email 查重失败         |
+| `IntegrityError`           | 409 | `{"detail": "数据冲突..."}`        | DB 层兜底（并发注册同 username/email） |
+| `FitForgeException`（其他）    | 400 | `{"detail": str(exc)}`         | 其他业务异常                       |
+| `Exception`（未捕获）           | 500 | FastAPI 默认                     | 系统错误                         |
+
 
 **双层防御**：
+
 - 应用层（service 查重）：99% 情况拦截，给出明确错误信息
 - DB 层（UNIQUE 约束）：1% 并发情况兜底，避免数据不一致
 
@@ -413,12 +500,14 @@ async def health():
 
 ## 7. 测试策略
 
-| 层级 | 工具 | 覆盖 |
-|------|------|------|
-| 单元 | `pytest` + `pytest-asyncio` | `core/security.py` hash/verify 正确性 |
-| 集成 | `pytest` + `httpx.AsyncClient` | `/auth/register` 端到端：成功 / username 重复 / email 重复 / 弱密码 |
-| DB 验证 | `alembic upgrade head` + `mysql` CLI | 3 张表创建成功、CASCADE 生效 |
-| 手工 smoke | `curl` | 注册端到端 |
+
+| 层级       | 工具                                   | 覆盖                                                     |
+| -------- | ------------------------------------ | ------------------------------------------------------ |
+| 单元       | `pytest` + `pytest-asyncio`          | `core/security.py` hash/verify 正确性                     |
+| 集成       | `pytest` + `httpx.AsyncClient`       | `/auth/register` 端到端：成功 / username 重复 / email 重复 / 弱密码 |
+| DB 验证    | `alembic upgrade head` + `mysql` CLI | 3 张表创建成功、CASCADE 生效                                    |
+| 手工 smoke | `curl`                               | 注册端到端                                                  |
+
 
 **MVP 测试用例清单**：
 
@@ -471,14 +560,16 @@ async def test_register_weak_password():
 
 ## 8. 风险点 + 防范
 
-| 风险 | 影响 | 防范策略 | 验证手段 |
-|------|------|----------|----------|
-| **并发注册同 username 致 IntegrityError** | 数据不一致 | 应用层先查重 + DB 层 UNIQUE 约束兜底 | 并发测试：开 10 个线程同时注册 |
-| **password_hash 字段泄漏到响应** | 严重安全事故 | 路由层强制 `UserRead.model_validate()` + UserRead 不定义 password_hash | 单元测试断言 `password_hash not in resp.json()` |
-| **Alembic autogenerate 漏改 ENUM 值** | 线上 enum 变更失败 | 人工 review 每个 migration 文件、特别检查 enum 列表 | 每次 migration diff review |
-| **明文密码误传日志** | 严重安全事故 | service 层只在内存处理 password、绝不打 logger、ORM 字段 `password_hash` 不打 repr | grep 全文无 password 明文 |
-| **D17 schema 与 ORM 不一致** | 上线后 schema 偏差 | ORM 写完立刻 `alembic upgrade head` 在本地建库 + `mysql -e "DESC users"` 对比 | D17 蓝图 §3.1 字段表与 DB DESC 输出对比 |
-| **asyncmy 连接池耗尽** | 高并发下雪崩 | 配 `pool_size=10, max_overflow=20` + `pool_pre_ping=True` | 压测 100 并发 |
+
+| 风险                                  | 影响            | 防范策略                                                               | 验证手段                                      |
+| ----------------------------------- | ------------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| **并发注册同 username 致 IntegrityError** | 数据不一致         | 应用层先查重 + DB 层 UNIQUE 约束兜底                                          | 并发测试：开 10 个线程同时注册                         |
+| **password_hash 字段泄漏到响应**           | 严重安全事故        | 路由层强制 `UserRead.model_validate()` + UserRead 不定义 password_hash     | 单元测试断言 `password_hash not in resp.json()` |
+| **Alembic autogenerate 漏改 ENUM 值**  | 线上 enum 变更失败  | 人工 review 每个 migration 文件、特别检查 enum 列表                             | 每次 migration diff review                  |
+| **明文密码误传日志**                        | 严重安全事故        | service 层只在内存处理 password、绝不打 logger、ORM 字段 `password_hash` 不打 repr | grep 全文无 password 明文                      |
+| **D17 schema 与 ORM 不一致**            | 上线后 schema 偏差 | ORM 写完立刻 `alembic upgrade head` 在本地建库 + `mysql -e "DESC users"` 对比 | D17 蓝图 §3.1 字段表与 DB DESC 输出对比             |
+| **asyncmy 连接池耗尽**                   | 高并发下雪崩        | 配 `pool_size=10, max_overflow=20` + `pool_pre_ping=True`           | 压测 100 并发                                 |
+
 
 ---
 
@@ -576,9 +667,11 @@ async def test_register_weak_password():
 
 ## 12. 审批与变更记录
 
-| 日期 | 版本 | 变更 | 审批人 |
-|------|------|------|--------|
-| 2026-07-06 | v1 | 初稿：6 决策 + 完整架构 + 数据流 + 错误处理 + 风险点 | LHR6666（待 review）|
+
+| 日期         | 版本  | 变更                                | 审批人               |
+| ---------- | --- | --------------------------------- | ----------------- |
+| 2026-07-06 | v1  | 初稿：6 决策 + 完整架构 + 数据流 + 错误处理 + 风险点 | LHR6666（待 review） |
+
 
 ---
 

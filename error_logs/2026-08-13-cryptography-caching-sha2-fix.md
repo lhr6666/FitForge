@@ -23,12 +23,14 @@ RuntimeError: 'cryptography' package is required for sha256_password
 
 ## 2. 根因
 
-| 层级 | 详情 |
-|------|------|
-| **MySQL 8 默认认证** | `caching_sha2_password`（MySQL 5.7+ 默认）|
-| **认证机制** | RSA 加密握手（密码本身不传输，用公钥加密）|
-| **Python 客户端支持** | pymysql 内置 SHA1 哈希，**不内置 RSA** |
-| **需要** | `cryptography` Python 包（PyMySQL 通过它调 OpenSSL）|
+
+| 层级               | 详情                                            |
+| ---------------- | --------------------------------------------- |
+| **MySQL 8 默认认证** | `caching_sha2_password`（MySQL 5.7+ 默认）        |
+| **认证机制**         | RSA 加密握手（密码本身不传输，用公钥加密）                       |
+| **Python 客户端支持** | pymysql 内置 SHA1 哈希，**不内置 RSA**                |
+| **需要**           | `cryptography` Python 包（PyMySQL 通过它调 OpenSSL） |
+
 
 **关键**：MySQL 8 用新认证协议 → pymysql 需要 cryptography 才能连。
 
@@ -49,7 +51,7 @@ pip install cryptography
 
 ```sql
 ALTER USER 'fitforge'@'localhost'
-    IDENTIFIED WITH mysql_native_password BY 'fitforge_dev_password_2026';
+    IDENTIFIED WITH mysql_native_password BY 'lhr076200';
 FLUSH PRIVILEGES;
 ```
 
@@ -80,6 +82,7 @@ sudo mysql -e "ALTER USER 'fitforge'@'localhost' \
 ```
 
 **为什么选 B 不选 A**：
+
 - 服务器已经装好 fitforge 库（之前 D26 决策）
 - 改 plugin 1 行 SQL 解决
 - 不需要装额外包
@@ -97,12 +100,14 @@ docker run -d --name fitforge-mysql -p 3307:3306 \
 
 ## 5. 经验教训
 
-| 教训 | 适用场景 |
-|------|----------|
-| MySQL 8 部署时**强制考虑认证方式** | 任何新部署 |
-| pymysql + MySQL 8 = 必须装 cryptography | 用 pymysql 必踩 |
-| asyncmy + caching_sha2 = **也是** 报错 | async 驱动同样问题 |
-| `--default-authentication-plugin` 只对**新用户**生效 | 容器化部署 |
+
+| 教训                                            | 适用场景         |
+| --------------------------------------------- | ------------ |
+| MySQL 8 部署时**强制考虑认证方式**                       | 任何新部署        |
+| pymysql + MySQL 8 = 必须装 cryptography          | 用 pymysql 必踩 |
+| asyncmy + caching_sha2 = **也是** 报错            | async 驱动同样问题 |
+| `--default-authentication-plugin` 只对**新用户**生效 | 容器化部署        |
+
 
 ## 6. 面试话术
 

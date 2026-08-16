@@ -53,9 +53,18 @@ ssh fitforge
 mkdir -p ~/fitforge
 tar -xzf /tmp/fitforge.tar.gz -C ~/fitforge/
 rm /tmp/fitforge.tar.gz
+ 
+#本地再删除掉原本的临时文件
+rm /tmp/fitforge.tar.gz
+    
 ```
 
 ### Step 2: 服务器 .env（**用新密码 lhr076200**）
+
+服务器执行：`cat > ~/fitforge/.env << 'EOF'` → 输入多行内容 → `EOF`结束。
+
+- `cat > 文件`：覆盖写入文件；`<< 'EOF'`：以`EOF`为结束标记的多行输入。  
+运行原理：shell将`EOF`之间的内容作为标准输入传递给`cat`，`cat`写入指定文件。
 
 ```bash
 cat > ~/fitforge/.env << 'EOF'
@@ -73,15 +82,36 @@ EOF
 
 ### Step 3: 改 fitforge 用户 plugin（caching_sha2 → mysql_native_password）
 
+因为MySQL 8 默认用 `caching_sha2_password` 这个新认证方式，但我们的 Python 库（`pymysql` 或 `asyncmy`）不认识它，导致连接失败。
+
+所以，我们需要用ALTER USER这个sql语句把 `fitforge` 用户的认证方式从 `caching_sha2_password` **改成** `mysql_native_password`。而要执行这个语句需要以 MySQL `root` 用户的身份去执行 `ALTER USER` 命令，去修改 `fitforge` 用户的认证方式。为了使用root身份要在服务器本地，并且用 `sudo` 命令（比如 `sudo mysql`）来登录，`auth_socket` 就认为你是可信的，所以我们用 `sudo` 登录时，MySQL 会自动放行，不需要我们输入 `root` 的密码就可以登陆。
+
+而我的fit forge应用是python写的，而 MySQL 是一个用 C++ 写的独立程序。Python 和 MySQL 之间“语言不通”，无法直接对话。fitforge的数据存到了MySQL里面要读取必须通过中间翻译官（把 Python 的请求翻译成 MySQL 能听懂的语言，再把 MySQL 的回应翻译回 Python 能理解的内容）`pymysql` **或**`asyncmy。而无论哪个`在和 MySQL 对话的过程中，需要用到密码 `lhr076200` 来证明身份。
+
+- `pymysql`：这是一个“同步”的翻译官。它的工作方式是“你问一句，我等它回答，然后再问下一句”。适合处理简单的、顺序执行的任务。
+- eg：**数据库迁移工具** `alembic`：它可能用的是 `pymysql`（同步方式）来执行 `CREATE TABLE` 等操作。因为它通常是按顺序执行，不需要异步。
+
+- `asyncmy`：这是一个“异步”的翻译官。它的工作方式是“我把问题丢过去，不等回答，继续做别的事，等答案回来我再处理”。适合处理高并发的、需要同时处理很多请求的任务（比如你的 Web 服务器）。
+- eg：**你的 FastAPI 应用**：它用的是 `asyncmy`（异步方式）来处理用户的 HTTP 请求。因为 Web 服务器需要同时处理成百上千个请求，异步方式效率更高。
+
+  
+
+
 ```bash
 sudo mysql -e "ALTER USER 'fitforge'@'localhost' \
     IDENTIFIED WITH mysql_native_password BY 'lhr076200'; \
-    FLUSH PRIVILEGES;"
+    FLUSH PRIVILEGES;"#FLUSH PRIVILEGES是MySQL SQL语句，用于刷新权限表，使权限修改立即生效。诞生于MySQL早期，核#心作用是重新加载权限缓存，适用场景为修改用户权限后需立即生效。
 ```
 
 **为什么需要这步**：MySQL 8 默认 `caching_sha2_password`，pymysql 需 `cryptography` 包才能连。**改 plugin 一行 SQL 解决**。
 
-### Step 4: venv + alembic
+### Step 4: venv + alembic（虚拟环境配置+完成数据迁移）
+
+当你执行了 `python3 -m venv venv` 创建虚拟环境，然后 `source venv/bin/activate` 激活它之后，你接下来用 `pip install` 安装的**所有依赖，都会被安装到这个** `venv` **虚拟环境里**，而不是你服务器上全局的 Python 环境。
+
+这就像你给 FitForge 项目建立了一个**专属的、隔离的“小厨房”**。在这个小厨房里，你安装的任何“调料”（比如 FastAPI、SQLAlchemy）都只属于 FitForge，不会跑到外面去影响其他项目。
+
+所以，你用 `pip install -r requirements.txt` 安装的依赖，都精准地落在了 `~/fitforge/venv/` 这个目录下
 
 ```bash
 cd ~/fitforge
@@ -90,6 +120,7 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
+#alembic 就是一个“建筑队”，它根据你的代码蓝图，把数据库的“房子”（表结构）从旧样子改造成新样子。
 alembic upgrade head
 # 输出：Running upgrade -> ec5983897455, create 3 tables
 ```
@@ -101,6 +132,7 @@ nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
 sleep 5
 
 # 验证健康
+#。curl可发送GET请求，获取响应状态码和内容，验证服务健康。若不用curl，用浏览器访问无法显示详细响应（如状态码、响应体），且无法自动化测试。
 curl http://localhost:8000/health
 # 输出：{"status":"healthy"}
 
@@ -111,12 +143,14 @@ curl http://localhost:8000/health
 
 ## 3. 服务器 4 个端到端测试结果
 
-| Test | 请求 | 响应 | 状态码 |
-|------|------|------|--------|
-| 1. 正常注册 | `{"username":"serveruser", "email":"server@example.com", "password":"ServerPass1"}` | `{"id":1,"username":"serveruser","nickname":null}` | **201** ✅ |
-| 2. username 重复 | `{"username":"serveruser", "email":"server2@example.com", ...}` | `{"detail":"用户名 'serveruser' 已被占用"}` | **409** ✅ |
-| 3. 弱密码 | `{"username":"bob", "password":"12345678"}` | `{"detail":[{"msg":"Value error, 密码必须包含字母"...}]}` | **422** ✅ |
-| 4. 缺 email | `{"username":"charlie", "password":"Password123"}` | `{"detail":[{"msg":"Field required"...}]}` | **422** ✅ |
+
+| Test           | 请求                                                                                  | 响应                                                 | 状态码       |
+| -------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------- | --------- |
+| 1. 正常注册        | `{"username":"serveruser", "email":"server@example.com", "password":"ServerPass1"}` | `{"id":1,"username":"serveruser","nickname":null}` | **201** ✅ |
+| 2. username 重复 | `{"username":"serveruser", "email":"server2@example.com", ...}`                     | `{"detail":"用户名 'serveruser' 已被占用"}`               | **409** ✅ |
+| 3. 弱密码         | `{"username":"bob", "password":"12345678"}`                                         | `{"detail":[{"msg":"Value error, 密码必须包含字母"...}]}`  | **422** ✅ |
+| 4. 缺 email     | `{"username":"charlie", "password":"Password123"}`                                  | `{"detail":[{"msg":"Field required"...}]}`         | **422** ✅ |
+
 
 **所有路径都对**：业务成功 + 业务异常 + Pydantic 校验。
 
