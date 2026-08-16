@@ -264,11 +264,76 @@ e4ba047  docs(notes): add auth login complete tech notes
 > 双 token + refresh rotate —— access 30min + refresh 14day + 每次 refresh 作废旧 refresh 签发新 refresh。
 > 防重放攻击：攻击者拿到旧 refresh 时，DB 已 revoked → 401。
 
-**下一步**：
-
-- 周五：body_measurements + user_goals CRUD
-- 周六：git push + 部署收尾
+**下一步**（按原计划，now 已修正）：
+- 周五（2026-08-15）：body_measurements + user_goals CRUD → 周六补
+- 周六（2026-08-16）：见下文「第 5 天 - 周六补 周五」+ 原计划 git push
 - 周日：周报 + 复盘
+
+---
+
+### 第 1 周 第 5 天 - 周六补 周五内容（2026/08/16）- body_measurements + goals CRUD 设计
+
+> **状态**：头脑风暴 + 任务拆解完成（spec + plan 已 commit），**编码未开始**
+
+**目标**：
+- [x] 调用 brainstorming skill → Q1-Q8 决策产出（Q1-Q3 用户拍板，Q4-Q8 推荐默认）
+- [x] 写 spec v1 + 用户 review 通过
+- [x] 调 writing-plans skill → 16 task 实施计划
+- [x] 自审 spec + 自审 plan（Placeholder / 一致性 / 范围 / 模糊性 4 项）
+- [x] spec commit（`2ab935e`，1003 行）+ plan commit（`a2785d2`，1614 行）
+- [ ] Task 1-16 编码落地（**未开始**）
+
+**产出**：
+- `docs/superpowers/specs/2026-08-16-body-crud-design.md`（commit `2ab935e`）
+- `docs/superpowers/plans/2026-08-16-body-crud-plan.md`（commit `a2785d2`）
+
+**8 个新决策（D32-D39）**：
+- D32：URL 平铺 RESTful（/body-measurements、/user-goals）
+- D33：measurements 两个创建端点（单 + /batch），整体事务，max 50 条
+- D34：measurements PATCH 仅允许 notes / recorded_at（体重等不可改）
+- D35：goals PATCH 全 5 字段（type / target_value / status / deadline / notes）
+- D36：measurements 硬删（DELETE） + goals 不实现 DELETE（走 PATCH status=abandoned）
+- D37：列表 limit 上限 100、offset >= 0（业务保护）
+- D38：跨用户访问返回 404（防 ID 枚举，与 GitHub 一致）
+- D39：get_current_user 抽到 core/security.py（避免路由循环 import）
+
+**11 个端点（10 实现 + 1 故意不实现）**：
+- measurements 6：POST / POST /batch / GET / GET {id} / PATCH {id} / DELETE {id}
+- goals 4：POST / GET（带 status 过滤）/ GET {id} / PATCH {id}
+- ~~DELETE /user-goals/{id}~~ （Q5 不实现）
+
+**Spec 8 风险坑点**：
+- W1：datetime naive vs aware（D17-f）
+- W2：SQLAlchemy db.get 必须显式 None check
+- W3：PATCH schema 用 extra="forbid" 防字段误覆盖
+- W4：PATCH 用 exclude_unset 防 None 清空字段
+- W5：批量端点整体事务（依赖依赖倒置 fallback）
+- W6：get_current_user 迁移位置（已落 D39）
+- W7：测试环境数据库（MySQL fitforge_test schema）
+- W8：测试 fixture 复用 auth_headers
+
+**完整 16 task 计划**（详见 plan）：
+- 大块 1：异常 + handler（T1-T2）
+- 大块 2：Schemas（T3-T4）
+- 大块 3：Service 层（T5-T7）
+- 大块 4：路由层（T8-T10）
+- 大块 5：测试（T11-T14）
+- 大块 6：服务端到端 + 知识沉淀（T15-T16）
+
+**预估产出**：
+- 16 commit（每 task 一 commit）
+- 8 个新文件 + 5 个修改文件 + 1 个 smoke 脚本
+- 30+ 测试用例
+- 3 篇 tech_notes（extra=forbid / get_current_user refactor / batch API 设计模式）
+
+**遇到的决策**：
+- Q1-Q3 已在 brainstorming 用户拍板
+- Q4-Q8 推荐默认（待用户在 plan review / 编码前调整）
+
+**下一步**：
+- 用户确认 plan + 选择执行模式（subagent-driven 或 inline execution）→ 开始 Task 1 编码
+- 编码完成后调 requesting-code-review skill 审
+- 周日统一复盘：把周五补内容 + 周六部署内容拼起来写周报
 
 ---
 
@@ -280,12 +345,12 @@ e4ba047  docs(notes): add auth login complete tech notes
 | 周二 | 环境/服务器 | 2 | ✅ |
 | 周三 | /auth/register | 22 | ✅ |
 | 周四 | /auth/login + refresh + logout | 11 | ✅ |
-| 周五 | body_measurements + goals CRUD | - | ⬜ |
+| 周五 | body_measurements + goals CRUD 设计 → 周六补 | 2 | 🚧 spec+plan |
 | 周六 | git push + 部署收尾 | - | ⬜ |
 | 周日 | 周报 + 复盘 | - | ⬜ |
 
-**总 commit 数**：36（21 + 11 + 4 其他）
-**总决策数**：23（D1-D19 + D26 + D27 + D28-D31）
+**总 commit 数**：38（21 + 11 + 4 其他 + 2 spec/plan）
+**总决策数**：31（D1-D19 + D26 + D27 + D28-D31 + D32-D39）
 **总 tech_notes**：9 篇
 **总 error_log**：2 篇
 
@@ -564,6 +629,101 @@ e4ba047  docs(notes): add auth login complete tech notes
 ### 待决项
 
 （无，本周 19 项技术选型全部完成 — D1-D19）
+
+---
+
+### D32. body_measurements + user_goals URL 平铺 RESTful（2026/08/16）
+
+- **决策**：URL 用资源平铺（`/body-measurements/*`、`/user-goals/*`），不带 `/users/me` 前缀
+- **理由**：
+  - 与现有 `/auth/*` 风格统一
+  - "我的"语义由 `Depends(get_current_user)` 隐式表达，URL 不冗余
+  - 未来支持教练场景可渐进迁移到 `/users/{user_id}/...`，不破坏既有客户端
+- **关联**：spec `2026-08-16-body-crud-design.md` §1.2 + §3 端点清单
+
+### D33. body_measurements 双创建端点：单 + /batch（2026/08/16）
+
+- **决策**：两个端点都支持
+  - `POST /body-measurements`：单条
+  - `POST /body-measurements/batch`：批量，整体事务，max 50 条
+- **理由**：
+  - 实测一周早晚各一次 → 补录 7 个 POST 太啰嗦
+  - schema 一次定义 `List[BodyMeasurementCreateItem]` 复用
+  - 整体事务：任一失败整批回滚（避免脏数据）
+- **替代**：
+  - 单一端点 magic `isinstance` 检测（类型不清晰 + 边界复杂）
+- **关联**：spec §3.1 + §3.2 + §4.1 BodyMeasurementBatchCreate（max_length=50）
+
+### D34. measurements PATCH 仅允许 notes + recorded_at（2026/08/16）
+
+- **决策**：`BodyMeasurementPatch` 只含 `notes` + `recorded_at` 两字段
+- **理由**：
+  - 体重/腰围/1RM 是客观测量值 → 事后改即造假，业务上禁止
+  - 但"我 9 点测的，改 8 点半"或"补一句备注"是合理需求
+- **Pydantic 强约束**：`model_config = ConfigDict(extra="forbid")`（W3）—— 前端误传 `weight=999` 时 422 拒绝
+- **面试话术**：
+  > "我用 `extra='forbid'` 而非默认 allow —— 前端误传 weight 时 422 拒绝，业务层不会悄悄覆盖真实测量数据。FitForge 是数据完整性平台，weight 是事实，不可改。"
+- **关联**：spec §3.5 + §4.1 BodyMeasurementPatch
+
+### D35. goals PATCH 允许全 5 字段（2026/08/16）
+
+- **决策**：`UserGoalUpdate` 含 5 字段：`type` / `target_value` / `status` / `deadline` / `notes`
+- **理由**：
+  - `status` 必须能切（active → completed / abandoned）—— 不支持 update 等于列表功能废了
+  - 用户可调 `target_value`（"减 70 改减 65"）
+- **与 D34 不同语义**：goal 是"意图"，可改；measurement 是"事实"，不可改
+- **不允许 PATCH**：`user_id` / `id` / `created_at` / `updated_at`
+- **关联**：spec §3.10 + §4.2 UserGoalUpdate
+
+### D36. measurements 硬删 + goals 不删（走 status 状态机）（2026/08/16）
+
+- **决策**：
+  - `DELETE /body-measurements/{id}`：硬删（D17 NOT DO 软删除）
+  - ~~DELETE /user-goals/{id}~~：**不实现**，改走 `PATCH status="abandoned"`
+- **理由**：
+  - measurements 是"事实"，可重测 → 硬删合理
+  - goal 是"成长轨迹"（"我曾想减到 75kg"），硬删会损失历史数据
+  - 与 GitHub Issue "关掉"（不删）的设计哲学一致 —— 动作状态化
+- **面试话术**：
+  > "用户说 '删除一个目标' 其实很少见 —— 改走 PATCH status='abandoned' 不仅保留数据还能将来展示 '我放弃过哪些 / 为什么放弃'。YAGNI：MVP 不做 delete。"
+- **关联**：spec §3.11（标注不实现）+ §5.2 不含 `delete_goal`
+
+### D37. 列表查询参数：limit <= 100、offset >= 0、from/to（2026/08/16）
+
+- **决策**：
+  - `GET /body-measurements?from=&to=&limit=&offset=`（默认 20/0）
+  - `GET /user-goals?status=&limit=&offset=`（默认 20/0）
+- **理由**：
+  - 不引第三方分页库（SQLAlchemy 原生 limit/offset）
+  - limit 上限 100 是工程平衡（单请求防超时 + 内存压力）
+- **filter 字段选择**：
+  - measurements：`from` / `to` 是业务时间 `recorded_at`（D17-c 业务时间分离）
+  - goals：`status` Literal 过滤
+- **面试话术**：
+  > "我不用 fastapi-pagination 之类的库 —— 单数据库 + 原生 SQLAlchemy limit/offset 足够。limit 上限 100 是后端保护，避免恶意请求拖死服务。"
+- **关联**：spec §3.3 + §3.8
+
+### D38. 跨用户访问返回 404（防 ID 枚举）（2026/08/16）
+
+- **决策**：`service.get_measurement` / `service.get_goal` 检测到 `obj.user_id != current_user.id` 时统一抛 `MeasurementNotFoundError` / `GoalNotFoundError`（**不是** 403）
+- **理由**：
+  - 防止 ID 枚举攻击 —— 攻击者无法通过 403 vs 404 响应差异探测哪些 id 存在
+  - 与 GitHub / Stack Overflow 等大厂设计一致
+  - 业务语义一致：用户 A 看不到用户 B 的资源 = "找不到"
+- **面试话术**：
+  > "我返回 404 而非 403 —— 安全考虑。攻击者通过 403/404 差异能枚举出哪些 ID 存在。GitHub 也这么干。"
+- **关联**：spec §5.1 get_measurement + §6.1 注释
+
+### D39. get_current_user 抽到 core/security.py（2026/08/16）
+
+- **决策**：把 `get_current_user` 从 `api/auth.py` 迁移到 `core/security.py`（位置迁移，函数体不变）
+- **理由**：
+  - 避免循环 import：`api/body.py` / `api/goal.py` 等多个路由需要 `Depends(get_current_user)`，如果它仍在 `api/auth.py` 就有循环风险
+  - 依赖方向正确：业务（路由）依赖 core（基础设施），core 不应反向依赖路由
+  - 未来 CLI / 脚本绕过 HTTP 直接调业务时也能复用鉴权
+- **面试话术**：
+  > "依赖方向应该指向 core —— core 是基础设施层。路由层只做 HTTP 适配。让 core 反向 import 路由会出现循环 import，业务可复用性也变差。"
+- **关联**：spec §7.4 + plan Task 7
 
 ---
 
