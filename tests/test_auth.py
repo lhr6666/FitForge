@@ -1,5 +1,9 @@
 """端到端测试 - POST /auth/register。
 
+你的终端：会显示文字报告，告诉你“通过”还是“失败”。
+测试服务器：会在后台默默运行，处理请求，但它不会像正式上线那样把日志打印到你的屏幕上（除非你专门配置过）。
+跟服务器：它是在启动一个“模拟服务器”（Test Server）来运行你的代码，而不是凭空想象。测试结束后，这个迷你服务器通常会销毁或者重置状态。
+
 测试 4 个场景：
 1. 正常注册（201）
 2. username 重复（409）
@@ -108,7 +112,8 @@ async def test_login_success(client: AsyncClient):
     resp = await client.post("/auth/login", json={
         "email": "login_alice@example.com", "password": "Password123",
     })
-    assert resp.status_code == 200
+    #assert（断言）：这是测试的核心。它的意思是：“我坚信后面跟着的内容是真的”。
+    assert resp.status_code == 200  # 判决：服务器必须返回 200（成功），否则报错
     data = resp.json()
     assert data["token_type"] == "bearer"
     assert data["expires_in"] == 1800
