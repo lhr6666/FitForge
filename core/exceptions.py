@@ -1,4 +1,5 @@
 """FitForge 业务异常体系。
+这里是定义异常有哪些的
 
 Q2 决策：业务异常体系（service 抛自定义异常，路由层 exception_handler 映射）
 
@@ -85,6 +86,45 @@ class InvalidTokenError(FitForgeException):
         - token 已过期
         - token 类型错（拿 refresh 当 access 用）
         - token 被撤销（refresh 表 revoked=true）
+    """
+
+    pass
+
+
+class MeasurementNotFoundError(FitForgeException):
+    """测量记录不存在或非当前用户所有（HTTP 404）。
+
+    触发场景：
+        - measurement_id 不存在
+        - measurement_id 存在但 user_id != current_user.id（防 ID 枚举攻击）
+
+    关联决策：D38（跨用户访问统一返回 404 而非 403）
+    由 api/exception_handlers.py 映射到 HTTP 404 Not Found。
+    """
+
+    pass
+
+
+class GoalNotFoundError(FitForgeException):
+    """训练目标不存在或非当前用户所有（HTTP 404）。
+
+    触发场景：
+        - goal_id 不存在
+        - goal_id 存在但 user_id != current_user.id（防 ID 枚举攻击）
+
+    关联决策：D38（跨用户访问统一返回 404 而非 403）
+    由 api/exception_handlers.py 映射到 HTTP 404 Not Found。
+    """
+
+    pass
+
+
+class UnauthorizedAccessError(FitForgeException):
+    """未授权访问他人资源（HTTP 403）。
+
+    预留：当前 spec §5 跨用户访问统一返回 404（D38）以防枚举，
+    本异常保留供未来需要显式 403 的鉴权场景（如教练角色权限升级）。
+    由 api/exception_handlers.py 映射到 HTTP 403 Forbidden。
     """
 
     pass
