@@ -174,3 +174,39 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
     if payload.get("type") != "refresh":
         raise InvalidTokenError("token 类型错误（不是 refresh）")
     return payload
+
+
+# ===== get_current_user 鉴权中间件（D39 决策）=====
+# D39：从 api/auth.py 迁移到 core/security.py —— 避免路由层循环 import
+# （api/body.py / api/goal.py 等都依赖 get_current_user，不应在 api/auth.py）
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.db import get_db
+from models.user import User
+
+
+# HTTPBearer 提取 Authorization: Bearer xxx 中的 token
+# auto_error=False：自己处理 401（抛 InvalidTokenError），不让 FastAPI 默认 403 干扰
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """FastAPI Depends 中间件：验证 Bearer token，返回 User 对象。
+
+    使用：任何需要鉴权的端点加 Depends(get_current_user)
+    异常：InvalidTokenError -> handler 映射 401
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise InvalidTokenError("缺少 Bearer token")
+
+    token = credentials.credentials
+    payload = decode_access_token(token)  # 失败抛 InvalidTokenError
+    user = await db.get(User, int(payload["sub"]))
+    if not user:
+        raise InvalidTokenError("user not found")
+    return user

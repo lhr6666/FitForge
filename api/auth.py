@@ -10,12 +10,10 @@ Q4 决策：ORM → DTO 转换（路由层做，不污染 service 层）
 """
 
 from fastapi import APIRouter, Depends, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
-from core.exceptions import InvalidTokenError
-from core.security import decode_access_token
+from core.security import get_current_user
 from models.user import User
 from schemas.user import (
     LoginRequest,
@@ -67,18 +65,21 @@ async def register(
 # ============ /auth/login + refresh + logout + me 新增路由 ============
 
 @router.post("/login", response_model=TokenResponse)
+#路由层看到（前端/浏览器）：发起请求 POST /auth/login走这个函数
 async def login(
-    login_data: LoginRequest,
+    login_data: LoginRequest,#自动接收并解析 JSON 请求体
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """登录（email + password → access + refresh）。"""
+    #跳转到 services/auth_service.py 去执行
     access_token, refresh_token, expires_in = await auth_service.login(
-        db, login_data.email, login_data.password
+        db, login_data.email, login_data.password#传入login_data: LoginRequest这一行获取到的数据
     )
+    #将生成的 Token 包装成 JSON 返回。
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        token_type="bearer",
+        token_type="bearer",# 告诉前端这是 Bearer 类型的 Token
         expires_in=expires_in,
     )
 
@@ -110,30 +111,7 @@ async def logout(
     return None
 
 
-# ============ get_current_user 中间件 ============
-
-# HTTPBearer 提取 Authorization: Bearer xxx 中的 token
-_bearer_scheme = HTTPBearer(auto_error=False)  # auto_error=False 自己处理 401
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """FastAPI Depends 中间件：验证 Bearer token，返回 User 对象。
-
-    使用：任何需要鉴权的端点加 Depends(get_current_user)
-    异常：InvalidTokenError -> handler 映射 401
-    """
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise InvalidTokenError("缺少 Bearer token")
-
-    token = credentials.credentials
-    payload = decode_access_token(token)  # 失败抛 InvalidTokenError
-    user = await db.get(User, int(payload["sub"]))
-    if not user:
-        raise InvalidTokenError("user not found")
-    return user
+# ============ get_current_user 中间件（D39 决策：迁移到 core/security.py） ============
 
 
 @router.get("/me", response_model=UserRead)
