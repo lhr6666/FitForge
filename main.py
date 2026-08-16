@@ -17,9 +17,10 @@ app = FastAPI(
 
 
 # 注册业务异常 → HTTP 状态码映射（Q2 决策）
+# 有关注册异常的都会通过这里找到异常返回
 register_exception_handlers(app)
 
-# 挂载路由
+# APIRouter 收集好全部子模块的路由一次性挂载到主应用
 app.include_router(auth_router)
 
 # Phase 3: body-measurements + user-goals (Task 10)
