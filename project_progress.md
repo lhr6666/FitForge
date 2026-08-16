@@ -346,13 +346,13 @@ e4ba047  docs(notes): add auth login complete tech notes
 | 周三 | /auth/register | 22 | ✅ |
 | 周四 | /auth/login + refresh + logout | 11 | ✅ |
 | 周五 | body_measurements + goals CRUD 设计 → 周六补 | 2 | 🚧 spec+plan |
-| 周六 | git push + 部署收尾 | - | ⬜ |
-| 周日 | 周报 + 复盘 | - | ⬜ |
+| 周六 | body_measurements + goals CRUD 编码 + 测试 | 16 | ✅ |
+| 周日 | 周报 + 复盘 + 部署 | - | ⬜ |
 
-**总 commit 数**：38（21 + 11 + 4 其他 + 2 spec/plan）
-**总决策数**：31（D1-D19 + D26 + D27 + D28-D31 + D32-D39）
+**总 commit 数**：54（21 + 11 + 4 其他 + 2 spec/plan + 16 Phase 1-4 编码）
+**总决策数**：32（D1-D19 + D26 + D27 + D28-D31 + D32-D40）
 **总 tech_notes**：9 篇
-**总 error_log**：2 篇
+**总 error_log**：3 篇
 
 ---
 
@@ -724,6 +724,27 @@ e4ba047  docs(notes): add auth login complete tech notes
 - **面试话术**：
   > "依赖方向应该指向 core —— core 是基础设施层。路由层只做 HTTP 适配。让 core 反向 import 路由会出现循环 import，业务可复用性也变差。"
 - **关联**：spec §7.4 + plan Task 7
+
+### D40. 测试数据库改用 SQLite in-memory + StaticPool（2026/08/16）
+
+- **决策**：`tests/conftest.py` 顶部 `os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")`，engine 用 `StaticPool` 共享 connection schema
+- **背景**：plan 原方案是 MySQL `fitforge_test` 单独 schema，但实施时遇到：
+  1. 本地 Docker MySQL daemon down（3306/3307/3308 全 ConnectionRefused）
+  2. 即使起来了，fitforge dev user **无 CREATE DATABASE 全局权限**（Access denied 1044）
+- **理由**：
+  - 测试金字塔核心是验证业务逻辑，DB 引擎选型对业务测试影响小
+  - SQLite `:memory:` + `StaticPool` 提供**完美测试隔离**：每次测试 function 独立 session 共享 schema，teardown 清空
+  - 最小权限原则：不为测试扩大 dev user 权限
+- **配套**：
+  - `tests/conftest.py` conftest 顶部固定 SQLite URL
+  - `engine` fixture 用 `poolclass=StaticPool` 强制单 connection
+  - `requirements.txt` **不改**（用户 M 标记文件），aiosqlite 作为测试专属依赖，仅本地 pip install
+  - `clean_test_data` autouse fixture 每个测试前后清空所有测试数据
+- **未来回归**：MySQL 全链路一致性可走 GitHub Actions CI + docker-compose 起专用 mysql-test 容器，**不污染**本地开发
+- **面试话术**：
+  > "测试金字塔是验证业务逻辑，不是验证 DB 引擎兼容性。SQLite `:memory:` + StaticPool 提供'每测试独立 schema'的完美隔离，而 MySQL 共享 schema 有 conftest 漏 fixture 污染全数据库的风险。**测试要的不是'与生产完全一样的环境'，而是'业务规则在每个边界 case 下表现一致'**。"
+- **关联**：plan §W7 修订 + Phase 4 subagent 实施 + 子 agent 第一次 D41 幻觉（subagent 内部命名 D41 与正式 D40 不一致，已在 commit 后用 Edit + 后续 commit fix）
+- **教训**：subagent 决策号**必须**对齐 spec §11 决策表，不允许子 agent 自创编号
 
 ---
 

@@ -5,7 +5,7 @@ httpx.AsyncClient + ASGITransport 是 FastAPI 端到端测试的标准模式：
 - AsyncClient 模拟 HTTP 客户端
 - pytest-asyncio 让 async 测试函数能跑
 
-测试隔离（Phase 4 D41 决策）：
+测试隔离（Phase 4 D40 决策）：
 - 顶层 SQLite in-memory DB（StaticPool 共享 connection）
 - engine fixture 创建所有表
 - 每个测试函数有独立 db_session（teardown 不保留）
@@ -16,7 +16,7 @@ Phase 3 的 clean_users_table 替换为 clean_test_data（清全部表，更彻�
 Phase 3 的 client fixture 改为依赖 engine + dependency_overrides（走测试 SQLite）。
 """
 
-# ===== 测试专属 SQLite in-memory 配置（D41 决策）=====
+# ===== 测试专属 SQLite in-memory 配置（D40 决策）=====
 # 必须在 import settings 之前执行 —— BaseSettings 会读 os.environ
 import os
 
@@ -112,7 +112,7 @@ async def auth_headers(db_session):
     return {"Authorization": f"Bearer {access}"}
 
 
-# ===== 幂等性：清空测试数据（D41 沿用 Phase 3 思路 + 扩范围）=====
+# ===== 幂等性：清空测试数据（D40 沿用 Phase 3 思路 + 扩范围）=====
 @pytest_asyncio.fixture(autouse=True)
 async def clean_test_data(engine):
     """每个测试前后清空所有测试数据（幂等性）。
