@@ -59,7 +59,7 @@ class User(Base):
         nullable=False,
     )
 
-    # 关系字段：定义了两个一对多关系，分别关联到 UserGoal 和 BodyMeasurement 模型。也设置了级联删除的规则：当 User 被删除时，所有相关的 UserGoal 和 BodyMeasurement 也会被删除。
+    # 关系字段：定义了两个一对多关系，分别关联到 UserGoal 和 BodyMeasurement 还有refresh_tokens模型。也设置了级联删除的规则：当 User 被删除时，所有相关的 UserGoal 和 BodyMeasurement 也会被删除。
     goals = relationship(
         "UserGoal",#告诉数据库，这个字段指向 UserGoal 模型，也就是要读取goal时去UserGoal表中找
         back_populates="user",

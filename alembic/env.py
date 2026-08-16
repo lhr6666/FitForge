@@ -14,6 +14,7 @@ config = context.config
 
 # FitForge 自定义：把 settings.SYNC_DATABASE_URL 注入 alembic config
 # 避免 alembic.ini 含明文密码
+#这里直接读取同步地址防止读到异步地址导致报错
 config.set_main_option("sqlalchemy.url", settings.SYNC_DATABASE_URL)
 
 # Interpret the config file for Python logging.
@@ -23,14 +24,12 @@ if config.config_file_name is not None:
 
 # FitForge 自定义：target_metadata 让 alembic autogenerate 能对比 ORM 和 DB schema
 # from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+
+# Base.metadata 就是一个“图纸收纳册”。因为class User(base)Python 执行到这儿时,它把 id 和 name 这些定义，自动塞进了 Base 肚子里的 metadata 收纳册里。
 target_metadata = Base.metadata  # 3 张 model 表（users/user_goals/body_measurements）
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
+#但同样还需要导入其他模型比如定义的user表，goal表等，这样base.metadata里面才会有所有的表，然后才能生成迁移文件。
+#如果不导入的话就会以为base.metadata里面是空的，还会把原有的表清除掉
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

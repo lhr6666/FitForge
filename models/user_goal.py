@@ -48,10 +48,12 @@ class UserGoal(Base):
     # ===== 主键 =====
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # ===== 外键（D17-a：ON DELETE CASCADE）=====
+    # 这个就是定位究竟这个goal是哪个user定义的，从而达到关联数据的目的
     user_id = Column(
         Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="CASCADE"),#这条代码会使得数据库建立索引：在 user_goals.user_id 列上建索引；注册触发器：在 users 表上注册删除监听器
+        # 触发器：当 users 表中的某行被删除时，user_goals 表中所有与该用户相关的行也会被删除。
+        #因为user_goals表中的user_id列是外键，指向users表中的id列，并不是他这个表本身的列（也就是主键）
         nullable=False,
         index=True,
     )

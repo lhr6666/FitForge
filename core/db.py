@@ -22,8 +22,8 @@ from core.config import settings
 # - echo=True：MVP 阶段开 SQL 日志，方便调试
 # - pool_pre_ping=True：每次连接前 ping 一下，避免"连接已失效"错误（生产必开）
 engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=True,
+    settings.DATABASE_URL,#告诉路通向哪（比如 mysql+asyncmy://user:pass@localhost/db）。
+    echo=True,#注意：上线前要关掉，否则日志量太大会撑爆磁盘。
     pool_pre_ping=True,
 )
 
@@ -31,12 +31,12 @@ engine = create_async_engine(
 # ===== Session 工厂 =====
 # async_sessionmaker 是工厂的工厂：调用 AsyncSessionLocal() 返回 AsyncSession
 # - class_=AsyncSession：明确异步 session 类型
-# - expire_on_commit=False：commit 后访问属性不重新查询 DB（async 不能 lazy load）
+# - expire_on_commit=False：commit 后访问属性不重新查询 DB（async 不能 lazy load）不用await
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
+    bind=engine,#告诉 session 用哪个 engine（就是刚刚创建的那个）。
     class_=AsyncSession,
     expire_on_commit=False,
-    autoflush=False,  # 显式控制 flush 时机，避免隐式 SQL
+    autoflush=False,  # 不让系统偷偷帮你把内存数据刷到数据库，必须你自己显式控制。这样逻辑更清晰，避免产生意外的 SQL。
 )
 
 

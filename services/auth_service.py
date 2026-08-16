@@ -1,4 +1,5 @@
 """AuthService - 认证业务逻辑（注册、登录、token 签发）。
+这样子分层架构思想依赖http的就只有路由层那一块了，其他的都是python代码，以后也可以复用这些逻辑
 
 Q1 决策：重型 service 模式
 - 接 Pydantic schema（UserCreate）
@@ -62,6 +63,7 @@ async def register(db: AsyncSession, user_create: UserCreate) -> User:
         select(User).where(User.username == user_create.username)
     )
     if existing.scalar_one_or_none():
+        #抛出的是自定义异常不涉及http
         raise UsernameExistsError(
             f"用户名 '{user_create.username}' 已被占用"
         )
@@ -187,19 +189,19 @@ async def refresh_token(db: AsyncSession, refresh_token: str) -> tuple[str, str,
 
 
 async def logout(db: AsyncSession, refresh_token: str) -> None:
-    """撤销 refresh token（设 revoked=True）。幂等。
+    """撤销 refresh token（设 revoked=True）。幂等（多次操作结果一样）
 
-    无效 token 不报错（视作已经登出）。
+    无效 token 不报错（视作已经登出）。eg：用户点了“退出”，网络卡了一下，用户又狂点了两下“退出”，难道给用户报错吗？
     """
     try:
-        payload = decode_refresh_token(refresh_token)
+        payload = decode_refresh_token(refresh_token)#这一步是用钥匙（公钥）解开看看是否正确
     except InvalidTokenError:
         return  # 幂等：token 无效直接返回
 
-    jti = payload["jti"]
+    jti = payload["jti"]#从 Token 的内容里，提取出它的唯一身份证号（JTI）
     await db.execute(
-        update(RefreshToken)
-        .where(RefreshToken.jti == jti)
-        .values(revoked=True)
+        update(RefreshToken) # 【1】目标：我要修改 refresh_tokens 这张表
+        .where(RefreshToken.jti == jti) # 【2】筛选：找到 jti 等于刚才那个号码的记录
+        .values(revoked=True)    # 【3】动作：把它的 revoked 字段改成 True（True=失效/作废）
     )
-    await db.commit()
+    await db.commit()#提交

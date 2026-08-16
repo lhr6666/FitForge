@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     """
 
     # ===== 数据库 =====
-    # 运行时用（FastAPI + asyncmy）
+    # 运行时用（FastAPI + asyncmy）fastAPI需要对数据库进行操作，因此要用到异步对数据库进行访问；这是fastAPI的url地址
     DATABASE_URL: str = "mysql+asyncmy://fitforge:fitforge_dev_password_2026@localhost:3306/fitforge"
-    # Alembic autogenerate 用（pymysql 同步）
+    # Alembic autogenerate 用（pymysql 同步）alembic需要对数据库进行操作，因此要用到同步对数据库进行访问；这是alembic的url地址
     SYNC_DATABASE_URL: str = "mysql+pymysql://fitforge:fitforge_dev_password_2026@localhost:3306/fitforge"
 
     # ===== JWT（RS256 非对称签名）=====
