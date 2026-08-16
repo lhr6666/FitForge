@@ -1,4 +1,5 @@
 """FastAPI 业务异常 → HTTP 状态码映射。
+这里是负责接收service层抛出的异常的
 
 Q2 决策：业务异常体系（service 抛自定义异常，路由层 add_exception_handler 映射）
 
@@ -7,7 +8,7 @@ Q2 决策：业务异常体系（service 抛自定义异常，路由层 add_exce
 2. 路由层把业务异常映射到正确的 HTTP 状态码 + 响应体
 3. 兜底 3 层：具体异常 → 业务基类 → Exception（500）
 """
-
+#依赖 HTTP = 代码里写了 raise HTTPException。也就是现在这个代码是需要连上网开了服务器才可以跑通的
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
@@ -15,8 +16,11 @@ from sqlalchemy.exc import IntegrityError
 from core.exceptions import (
     EmailExistsError,
     FitForgeException,
+    GoalNotFoundError,
     InvalidCredentialsError,
     InvalidTokenError,
+    MeasurementNotFoundError,
+    UnauthorizedAccessError,
     UsernameExistsError,
 )
 
@@ -104,5 +108,38 @@ def register_exception_handlers(app: FastAPI) -> None:
         # 兜底：未被子类 handler 捕获的业务异常 → 400
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(MeasurementNotFoundError)
+    async def measurement_not_found_handler(
+        request: Request,  # noqa: ARG001
+        exc: MeasurementNotFoundError,
+    ) -> JSONResponse:
+        # 404：测量记录不存在或非当前用户所有（D38 防 ID 枚举）
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(GoalNotFoundError)
+    async def goal_not_found_handler(
+        request: Request,  # noqa: ARG001
+        exc: GoalNotFoundError,
+    ) -> JSONResponse:
+        # 404：训练目标不存在或非当前用户所有（D38 防 ID 枚举）
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(UnauthorizedAccessError)
+    async def unauthorized_access_handler(
+        request: Request,  # noqa: ARG001
+        exc: UnauthorizedAccessError,
+    ) -> JSONResponse:
+        # 403：未授权访问（预留，当前跨用户访问走 404 防枚举）
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
             content={"detail": str(exc)},
         )
