@@ -22,6 +22,13 @@ register_exception_handlers(app)
 # 挂载路由
 app.include_router(auth_router)
 
+# Phase 3: body-measurements + user-goals (Task 10)
+from api.body import router as body_router
+from api.goal import router as goal_router
+
+app.include_router(body_router)
+app.include_router(goal_router)
+
 
 @app.get("/")
 async def root() -> dict[str, str]:
