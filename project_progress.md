@@ -805,3 +805,38 @@ e4ba047  docs(notes): add auth login complete tech notes
 
 > "我处理过腾讯云 CVM 首次 SSH 失败的'经典坑'——服务器 Connection closed 不是密码错，而是**默认禁密码 + 公钥未上传**。解法在腾讯云控制台：重置密码 + 绑定密钥对 + 重启实例。这个流程 100% 网上教程不写，但每个用云服务器的人都会遇到。AWS / GCP / 阿里云 / 腾讯云各家流程不同，但'云厂商控制台绑定密钥对'是通用范式。"
 
+---
+
+## 🚨 2026/08/18 周一开工 - 事实澄清补记（事件驱动，立即落盘）
+
+> **触发事件**：早上读 `project_progress.md` 时汇报"16 个 task 编码未开始"，用户质疑后实地 git 查证发现完全失实。
+
+### 严重失实更正
+
+1. **"16 个 task 未开始"是错的**——git log 显示从 `a2785d2`（plan 写完）到 `ec663f5`（test sync）之间有 **24 个业务 commit**，16 个 task 编码**全部完成**（含 D39 refactor + D40 测试 SQLite 决策 + 部署 checklist + 4 个 deploy issues error_log）。
+2. **"32 个文件 commit"是指周日晚抢救性 sync**——`6572e7b` (6 files) + `d7c0fa9` (14 files) + `12b1d02` (7 files) + `ec663f5` (1 file) = 28 文件 + 散 commit 凑到 30+。
+3. **工作树当前 `clean`**（`git status` 验证），main 分支最新 commit `12b1d02`。
+
+### 服务器现状（用户自查）
+
+- **服务器状态**：用户已自查，**实例存活、处于"已关机"状态**（非"实例过期/释放"）
+- **SSH 连接**：**未连上**——早上 `ssh fitforge` 报 `Connection timed out`（端口 22 超时，与"关机"状态吻合）
+- **之前"部署成功"字样存疑**：
+  - `0460a14 feat(deploy): add server deploy script`（脚本本身 commit 了，不等于真部署）
+  - `f4f64df docs(error-log): record 4 deploy issues`（4 个部署问题已记录，需重读详情）
+  - `error_logs/2026-08-16-server-deploy-4-issues.md`（待详查）
+
+### 教训（必填）
+
+- **下次开工必须先 `git log --stat` 实地查证**，不能只读 `project_progress.md`——文档可能是过期/乐观版本
+- **失实汇报**比"不知道"更危险——差点误导用户以为"还没开始"就跳进"开始"的指令
+- 用户质疑**永远当回事**——"我好像都没连服务器就部署成功了？"这句是关键，文档里"成功"字样需逐一核验
+
+### 下一步（待用户拍板，未开始）
+
+- [ ] 重读 `error_logs/2026-08-16-server-deploy-4-issues.md` 弄清之前 4 个部署问题
+- [ ] 服务器开机后测试 SSH 连接（`ssh fitforge`）
+- [ ] 核实之前"部署"实际状态（本地 vs 服务器真跑过 vs 只是文档演练）
+- [ ] 第 1 周周报 + 复盘（周日 2026/08/17 没做，欠账）
+- [ ] git push 到 GitHub（`lhr6666/FitForge`，欠账）
+
