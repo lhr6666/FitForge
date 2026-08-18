@@ -34,6 +34,9 @@ alembic==1.14.0
 passlib[argon2]==1.7.4
 # argon2-cffi：Argon2 的 C 语言实现（passlib 的依赖）
 argon2-cffi==23.1.0
+# PyJWT[crypto]：JWT 编解码库（D5 决策，弃用 python-jose）
+# [crypto] extras 提供 RS256 非对称签名所需的 cryptography 后端
+PyJWT[crypto]==2.10.1
 
 # ===== 测试 =====
 # pytest：Python 测试事实标准
