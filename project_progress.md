@@ -835,8 +835,95 @@ e4ba047  docs(notes): add auth login complete tech notes
 ### 下一步（待用户拍板，未开始）
 
 - [ ] 重读 `error_logs/2026-08-16-server-deploy-4-issues.md` 弄清之前 4 个部署问题
-- [ ] 服务器开机后测试 SSH 连接（`ssh fitforge`）
-- [ ] 核实之前"部署"实际状态（本地 vs 服务器真跑过 vs 只是文档演练）
-- [ ] 第 1 周周报 + 复盘（周日 2026/08/17 没做，欠账）
-- [ ] git push 到 GitHub（`lhr6666/FitForge`，欠账）
+- [x] 服务器开机后测试 SSH 连接（`ssh fitforge`）→ 用户自查服务器存活
+- [x] 核实之前"部署"实际状态 → 08-16 部署完整（smoke 13 步全过）
+- [x] git push 到 GitHub（`lhr6666/FitForge`）→ **首次 push 完成**（commit `91bfeac`）
+- [x] 第 1 周周报 + 复盘（见下方「第 1 周周报」section）
+
+---
+
+## 第 1 周周报（2026/06/30 - 2026/08/16 + 周一补记 2026/08/18）
+
+> **写作原则**：汇编已有记录，不重写原文。精简版聚焦"指标 + 教训 + 规划"。
+> **覆盖周期**：第 0 周（06/30）初始化 + 第 1 周（07/01 - 08/16）开发 + 周一（08/18）收尾
+> **作者**：LHR6666 + Claude Code
+
+### 1.1 关键指标
+
+| 维度 | 数值 |
+|---|---|
+| 总 commit | 60+（含今日 4 个 + 抢救性 sync 4 个）|
+| 重大决策 | D1-D40（40 项）|
+| 文档沉淀 | 12 tech_notes + 7 error_logs（含今日 3 篇）|
+| 业务端点 | 13（5 auth + 6 body + 4 goals - 2 删除）|
+| 测试覆盖 | pytest 39+ + smoke 13 步全过 |
+| 服务器部署 | 08-16 完整部署（业务功能 100%）|
+| 远程备份 | 08-18 首次 git push（commit `91bfeac`）|
+
+### 1.2 7 天节奏（按时间序）
+
+- **周一**（07/01）：项目初始化 + Git（1 commit）
+- **周二**（07/02）：Linux/SSH/腾讯云 CVM（2 commit）
+- **周三**（07/06）：/auth/register 端到端（22 commit）
+- **周四**（08/14）：/auth/login + JWT rotation（11 commit）
+- **周五补**（08/16）：body CRUD 编码 + 服务器部署（24 commit）
+- **周日补**（08/18）：PyJWT 修复 + 重复部署纠正 + 首次 push（4 commit）
+
+### 1.3 6 大里程碑
+
+1. **Git + 项目骨架**（周一）— Conventional Commits 规范落地
+2. **SSH + 云服务器端到端**（周二）— ed25519 + 腾讯云首次访问踩坑
+3. **/auth/register 端到端**（周三）— Argon2id + PyJWT RS256
+4. **JWT 双 token + rotate**（周四）— 防重放 + DB 存 jti
+5. **body CRUD + 完整部署**（周五补）— 4 失误修复 + smoke 全过
+6. **远程备份建立**（周一补）— 首次 push 到 GitHub
+
+### 1.4 5 大教训（写入简历）
+
+| # | 教训 | 工程价值 | 来源 |
+|---|---|---|---|
+| 1 | 依赖脱漏是隐形技术债 | venv 残留掩盖 → 部署崩 | `error_logs/2026-08-18-pyjwt-requirements-fix.md` |
+| 2 | alembic 必须 always upgrade | schema 是状态不是代码 | `error_logs/2026-08-16-server-deploy-4-issues.md` |
+| 3 | 实地查证 > 文档脑补 | 2 次失实同源错误 | `error_logs/2026-08-18-redeploy-antipattern.md` |
+| 4 | 用户质疑永远当回事 | 早期信号被忽略代价大 | 早上"16 task" + "重复部署" |
+| 5 | exclude 列表必须显式备份 | .env 备份复制是部署必备 | 08-16 失误 1 |
+
+### 1.5 服务器 + 远程现状
+
+- **GitHub**：首次 push 完成（HEAD = `91bfeac`）
+- **服务器**：腾讯云 CVM 114.132.83.99 处于**关机状态**（按量付费节省），代码 = 08-16 部署完整版
+- **本地 vs 服务器**：本地 `91bfeac`（含 3 个 dev-side commit），服务器是 08-16 部署版本
+- **结论**：服务器功能完整，**无需重新部署**（08-18 已澄清）
+
+### 1.6 第 2 周规划（待 user 拍板）
+
+- 用户 08-18 决策：**先把第 1 周收尾干净再谈第 2 周**
+- 候选方向：
+  - A. 继续核心功能（CRUD 后续 / 教练 / 食物）
+  - B. 补技术债（rate limiting / logging / SQL 优化 / PyJWT grep 检查机制）
+  - C. 调 brainstorming 重新定方向
+
+### 1.7 技术债清单（code review 留项 + 本周发现）
+
+- [ ] rate limiting（slowapi 库）— 安全风险
+- [ ] logging（service + handler 层）— 运维友好
+- [ ] 合并 username/email 查重为单次 SQL — 性能优化
+- [ ] **PyJWT grep 检查机制**（建立本地+服务器 requirements.txt 完整性自动校验）
+
+### 1.8 面试话术复习入口
+
+详见「面试话术积累区」12 条 + 本周新增：
+- 重复部署反模式教训（`error_logs/2026-08-18-redeploy-antipattern.md`）
+- PyJWT 依赖脱漏教训（`error_logs/2026-08-18-pyjwt-requirements-fix.md`）
+- 5 大教训汇总（见 1.4 节）
+
+---
+
+## ✅ 第 1 周收尾 checklist（已完成）
+
+- [x] 业务代码 + 测试 + 部署 完整
+- [x] 文档沉淀（12 tech_notes + 7 error_logs）
+- [x] Git 远程备份（首次 push 到 `lhr6666/FitForge`）
+- [x] PyJWT requirements.txt 修复（commit `1622384`）
+- [x] 周报 + 复盘（本文档）
 
