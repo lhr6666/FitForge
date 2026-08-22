@@ -17,7 +17,7 @@ Phase 3 的 client fixture 改为依赖 engine + dependency_overrides（走测�
 """
 
 # ===== 测试专属 SQLite in-memory 配置（D40 决策）=====
-# 必须在 import settings 之前执行 —— BaseSettings 会读 os.environ
+# 必须在 import settings 之前执行 —— BaseSettings 会读 os.environ，跑测试的时候，别连真实的开发数据库，给我在内存里造一个临时的、假的 SQLite 数据库。
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -62,7 +62,7 @@ async def engine():
         echo=False,
     )
     async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all)#在你开始运行所有测试之前，先把数据库表结构全部建好
     yield eng
     await eng.dispose()
 
@@ -77,6 +77,8 @@ async def db_session(engine):
 
 
 # ===== 测试用户（service 单元测试用，不需可登录）=====
+#当你不需要登录，只是想测试 Service 层逻辑时，直接用这个用户就行，省得每次都手动创建
+#白盒测试或单元测试（也就是我直接在我这个模拟的数据库存一个用户，直接内部对他的数据进行修改）
 @pytest_asyncio.fixture
 async def sample_user(db_session):
     """基础 User（service 单元测试直接用此 fixture）。"""
@@ -92,6 +94,8 @@ async def sample_user(db_session):
 
 # ===== 鉴权 headers（route e2e 测试用）=====
 # W8 关键：内部 register + login -> 返回 {"Authorization": "Bearer xxx"}
+#当你测试需要鉴权的 API（如 PATCH 端点）时，直接把这个 auth_headers 夹具传进去，pytest 会自动帮你完成“注册 -> 登录 -> 拿 Token -> 放到请求头”的全过程。
+#黑盒测试或端到端测试（另一个是模拟我来自外来用户所测试的功能）
 @pytest_asyncio.fixture
 async def auth_headers(db_session):
     """注册并登录 alice_test，拿 Authorization headers。
