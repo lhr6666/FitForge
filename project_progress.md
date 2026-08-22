@@ -193,6 +193,7 @@ FitForge/  （本地目录：Intelligent_training_management_platform/）
   - `tech_notes/2026-08-13-server-deploy-record.md`（5 步部署 + 5 个真实踩坑 + 面试话术）
 
 **完整产出统计（周三 + 周二增量）**：
+
 - 21 个 commit（commit 链：f658413 → 2188dd4 → ... → 0460a14）
 - 7 篇 tech_notes + 1 篇 error_log + 1 篇 deploy doc
 - 19 项重大决策落盘（D1-D19）+ 2 项增量（D26-D27）
@@ -265,6 +266,7 @@ e4ba047  docs(notes): add auth login complete tech notes
 > 防重放攻击：攻击者拿到旧 refresh 时，DB 已 revoked → 401。
 
 **下一步**（按原计划，now 已修正）：
+
 - 周五（2026-08-15）：body_measurements + user_goals CRUD → 周六补
 - 周六（2026-08-16）：见下文「第 5 天 - 周六补 周五」+ 原计划 git push
 - 周日：周报 + 复盘
@@ -276,18 +278,21 @@ e4ba047  docs(notes): add auth login complete tech notes
 > **状态**：头脑风暴 + 任务拆解完成（spec + plan 已 commit），**编码未开始**
 
 **目标**：
+
 - [x] 调用 brainstorming skill → Q1-Q8 决策产出（Q1-Q3 用户拍板，Q4-Q8 推荐默认）
 - [x] 写 spec v1 + 用户 review 通过
 - [x] 调 writing-plans skill → 16 task 实施计划
 - [x] 自审 spec + 自审 plan（Placeholder / 一致性 / 范围 / 模糊性 4 项）
 - [x] spec commit（`2ab935e`，1003 行）+ plan commit（`a2785d2`，1614 行）
-- [ ] Task 1-16 编码落地（**未开始**）
+- [x] Task 1-16 编码落地（**未开始**）
 
 **产出**：
+
 - `docs/superpowers/specs/2026-08-16-body-crud-design.md`（commit `2ab935e`）
 - `docs/superpowers/plans/2026-08-16-body-crud-plan.md`（commit `a2785d2`）
 
 **8 个新决策（D32-D39）**：
+
 - D32：URL 平铺 RESTful（/body-measurements、/user-goals）
 - D33：measurements 两个创建端点（单 + /batch），整体事务，max 50 条
 - D34：measurements PATCH 仅允许 notes / recorded_at（体重等不可改）
@@ -298,11 +303,13 @@ e4ba047  docs(notes): add auth login complete tech notes
 - D39：get_current_user 抽到 core/security.py（避免路由循环 import）
 
 **11 个端点（10 实现 + 1 故意不实现）**：
+
 - measurements 6：POST / POST /batch / GET / GET {id} / PATCH {id} / DELETE {id}
 - goals 4：POST / GET（带 status 过滤）/ GET {id} / PATCH {id}
 - ~~DELETE /user-goals/{id}~~ （Q5 不实现）
 
 **Spec 8 风险坑点**：
+
 - W1：datetime naive vs aware（D17-f）
 - W2：SQLAlchemy db.get 必须显式 None check
 - W3：PATCH schema 用 extra="forbid" 防字段误覆盖
@@ -313,6 +320,7 @@ e4ba047  docs(notes): add auth login complete tech notes
 - W8：测试 fixture 复用 auth_headers
 
 **完整 16 task 计划**（详见 plan）：
+
 - 大块 1：异常 + handler（T1-T2）
 - 大块 2：Schemas（T3-T4）
 - 大块 3：Service 层（T5-T7）
@@ -321,16 +329,19 @@ e4ba047  docs(notes): add auth login complete tech notes
 - 大块 6：服务端到端 + 知识沉淀（T15-T16）
 
 **预估产出**：
+
 - 16 commit（每 task 一 commit）
 - 8 个新文件 + 5 个修改文件 + 1 个 smoke 脚本
 - 30+ 测试用例
 - 3 篇 tech_notes（extra=forbid / get_current_user refactor / batch API 设计模式）
 
 **遇到的决策**：
+
 - Q1-Q3 已在 brainstorming 用户拍板
 - Q4-Q8 推荐默认（待用户在 plan review / 编码前调整）
 
 **下一步**：
+
 - 用户确认 plan + 选择执行模式（subagent-driven 或 inline execution）→ 开始 Task 1 编码
 - 编码完成后调 requesting-code-review skill 审
 - 周日统一复盘：把周五补内容 + 周六部署内容拼起来写周报
@@ -339,15 +350,17 @@ e4ba047  docs(notes): add auth login complete tech notes
 
 ## 第 1 周完整进度（4/7 天）
 
-| Day | 内容 | commit | 状态 |
-|-----|------|--------|------|
-| 周一 | 项目初始化 | 1 | ✅ |
-| 周二 | 环境/服务器 | 2 | ✅ |
-| 周三 | /auth/register | 22 | ✅ |
-| 周四 | /auth/login + refresh + logout | 11 | ✅ |
-| 周五 | body_measurements + goals CRUD 设计 → 周六补 | 2 | 🚧 spec+plan |
-| 周六 | body_measurements + goals CRUD 编码 + 测试 | 16 | ✅ |
-| 周日 | 周报 + 复盘 + 部署 | - | ⬜ |
+
+| Day | 内容                                      | commit | 状态           |
+| --- | --------------------------------------- | ------ | ------------ |
+| 周一  | 项目初始化                                   | 1      | ✅            |
+| 周二  | 环境/服务器                                  | 2      | ✅            |
+| 周三  | /auth/register                          | 22     | ✅            |
+| 周四  | /auth/login + refresh + logout          | 11     | ✅            |
+| 周五  | body_measurements + goals CRUD 设计 → 周六补 | 2      | 🚧 spec+plan |
+| 周六  | body_measurements + goals CRUD 编码 + 测试  | 16     | ✅            |
+| 周日  | 周报 + 复盘 + 部署                            | -      | ⬜            |
+
 
 **总 commit 数**：54（21 + 11 + 4 其他 + 2 spec/plan + 16 Phase 1-4 编码）
 **总决策数**：32（D1-D19 + D26 + D27 + D28-D31 + D32-D40）
@@ -362,12 +375,12 @@ e4ba047  docs(notes): add auth login complete tech notes
 - [x] ~~添加 .gitignore~~（周一已完成）
 - [x] ~~初始化 Git 仓库~~（周一已完成，本地 commit 1232c38，未推送）
 - [x] ~~第 1 周技术选型确认~~（见下方「重大决策记录」D1-D16）
-- [ ] 推送首次 commit 到 GitHub（用户决定延后到周六部署前）
+- [x] 推送首次 commit 到 GitHub（用户决定延后到周六部署前）
 - [x] ~~周二：本地跑通 FastAPI /docs~~
 - [x] ~~周二：确认云服务器（用户已有腾讯云 CVM）~~
 - [x] ~~周二：SSH 密钥对生成 + 成功登录服务器~~
 - [x] 周二晚：服务器装 Python 3.10 + MySQL 8.0
-- [ ] 周二晚或周三：与 Claude 一起设计 MVP 蓝图（users / body_measurements / user_goals 三表）
+- [x] 周二晚或周三：与 Claude 一起设计 MVP 蓝图（users / body_measurements / user_goals 三表）
 
 ---
 
@@ -834,7 +847,7 @@ e4ba047  docs(notes): add auth login complete tech notes
 
 ### 下一步（待用户拍板，未开始）
 
-- [ ] 重读 `error_logs/2026-08-16-server-deploy-4-issues.md` 弄清之前 4 个部署问题
+- [x] 重读 `error_logs/2026-08-16-server-deploy-4-issues.md` 弄清之前 4 个部署问题
 - [x] 服务器开机后测试 SSH 连接（`ssh fitforge`）→ 用户自查服务器存活
 - [x] 核实之前"部署"实际状态 → 08-16 部署完整（smoke 13 步全过）
 - [x] git push 到 GitHub（`lhr6666/FitForge`）→ **首次 push 完成**（commit `91bfeac`）
@@ -850,15 +863,17 @@ e4ba047  docs(notes): add auth login complete tech notes
 
 ### 1.1 关键指标
 
-| 维度 | 数值 |
-|---|---|
-| 总 commit | 60+（含今日 4 个 + 抢救性 sync 4 个）|
-| 重大决策 | D1-D40（40 项）|
-| 文档沉淀 | 12 tech_notes + 7 error_logs（含今日 3 篇）|
-| 业务端点 | 13（5 auth + 6 body + 4 goals - 2 删除）|
-| 测试覆盖 | pytest 39+ + smoke 13 步全过 |
-| 服务器部署 | 08-16 完整部署（业务功能 100%）|
-| 远程备份 | 08-18 首次 git push（commit `91bfeac`）|
+
+| 维度       | 数值                                    |
+| -------- | ------------------------------------- |
+| 总 commit | 60+（含今日 4 个 + 抢救性 sync 4 个）           |
+| 重大决策     | D1-D40（40 项）                          |
+| 文档沉淀     | 12 tech_notes + 7 error_logs（含今日 3 篇） |
+| 业务端点     | 13（5 auth + 6 body + 4 goals - 2 删除）  |
+| 测试覆盖     | pytest 39+ + smoke 13 步全过             |
+| 服务器部署    | 08-16 完整部署（业务功能 100%）                 |
+| 远程备份     | 08-18 首次 git push（commit `91bfeac`）   |
+
 
 ### 1.2 7 天节奏（按时间序）
 
@@ -880,13 +895,15 @@ e4ba047  docs(notes): add auth login complete tech notes
 
 ### 1.4 5 大教训（写入简历）
 
-| # | 教训 | 工程价值 | 来源 |
-|---|---|---|---|
-| 1 | 依赖脱漏是隐形技术债 | venv 残留掩盖 → 部署崩 | `error_logs/2026-08-18-pyjwt-requirements-fix.md` |
-| 2 | alembic 必须 always upgrade | schema 是状态不是代码 | `error_logs/2026-08-16-server-deploy-4-issues.md` |
-| 3 | 实地查证 > 文档脑补 | 2 次失实同源错误 | `error_logs/2026-08-18-redeploy-antipattern.md` |
-| 4 | 用户质疑永远当回事 | 早期信号被忽略代价大 | 早上"16 task" + "重复部署" |
-| 5 | exclude 列表必须显式备份 | .env 备份复制是部署必备 | 08-16 失误 1 |
+
+| #   | 教训                        | 工程价值            | 来源                                                |
+| --- | ------------------------- | --------------- | ------------------------------------------------- |
+| 1   | 依赖脱漏是隐形技术债                | venv 残留掩盖 → 部署崩 | `error_logs/2026-08-18-pyjwt-requirements-fix.md` |
+| 2   | alembic 必须 always upgrade | schema 是状态不是代码  | `error_logs/2026-08-16-server-deploy-4-issues.md` |
+| 3   | 实地查证 > 文档脑补               | 2 次失实同源错误       | `error_logs/2026-08-18-redeploy-antipattern.md`   |
+| 4   | 用户质疑永远当回事                 | 早期信号被忽略代价大      | 早上"16 task" + "重复部署"                              |
+| 5   | exclude 列表必须显式备份          | .env 备份复制是部署必备  | 08-16 失误 1                                        |
+
 
 ### 1.5 服务器 + 远程现状
 
@@ -913,6 +930,7 @@ e4ba047  docs(notes): add auth login complete tech notes
 ### 1.8 面试话术复习入口
 
 详见「面试话术积累区」12 条 + 本周新增：
+
 - 重复部署反模式教训（`error_logs/2026-08-18-redeploy-antipattern.md`）
 - PyJWT 依赖脱漏教训（`error_logs/2026-08-18-pyjwt-requirements-fix.md`）
 - 5 大教训汇总（见 1.4 节）
@@ -926,4 +944,3 @@ e4ba047  docs(notes): add auth login complete tech notes
 - [x] Git 远程备份（首次 push 到 `lhr6666/FitForge`）
 - [x] PyJWT requirements.txt 修复（commit `1622384`）
 - [x] 周报 + 复盘（本文档）
-
