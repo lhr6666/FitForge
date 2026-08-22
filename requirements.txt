@@ -45,3 +45,5 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 # httpx：异步 HTTP 客户端（FastAPI 端到端集成测试用）
 httpx==0.28.1
+# aiosqlite：SQLite 异步驱动，conftest.py 用 SQLite in-memory 做测试隔离（D40 决策，2026-08-22 加入）
+aiosqlite==0.22.1
